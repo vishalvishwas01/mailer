@@ -42,12 +42,10 @@ export async function runEmailWorker() {
   }
 
   try {
-    const eligibility = await checkMailerEligibility();
-    if (!eligibility.eligible) return { processed: false, reason: eligibility.reason };
-
     await connectDB();
 
     // Never requeue an expired attempt automatically: Gmail may have accepted it.
+    // Reconcile expired leases even when the schedule is currently paused.
     await EmailQueueItem.updateMany(
       { status: "processing", lockedUntil: { $lte: new Date() } },
       {
@@ -58,6 +56,9 @@ export async function runEmailWorker() {
         $unset: { lockedUntil: 1 },
       }
     );
+
+    const eligibility = await checkMailerEligibility();
+    if (!eligibility.eligible) return { processed: false, reason: eligibility.reason };
 
     const candidate = await EmailQueueItem.findOne({
       status: "queued",
