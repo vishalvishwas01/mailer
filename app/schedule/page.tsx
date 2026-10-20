@@ -94,7 +94,7 @@ export default function SchedulePage() {
         dailyLimit: data.schedule.dailyLimit,
       });
 
-      setMessage("Schedule settings saved. Automatic sending is not active yet.");
+      setMessage(data.schedule.enabled ? "Schedule saved and enabled. Queued approved emails may send automatically during the configured window." : "Schedule saved and disabled. Future scheduled sends are paused.");
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to save settings."
@@ -120,8 +120,7 @@ export default function SchedulePage() {
       </p>
 
       <div className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-        Saving these settings does not activate an email-sending worker.
-        Automatic sending has not been implemented yet.
+        When enabled in a deployment with CRON_SECRET configured, approved items in the queue can send real emails automatically during this window. Keep this disabled until your credentials and test recipient are verified.
       </div>
 
       <form onSubmit={saveSettings} className="mt-6 space-y-6">
@@ -134,7 +133,7 @@ export default function SchedulePage() {
           <span>
             <span className="block font-medium">Enable schedule</span>
             <span className="block text-sm text-zinc-600">
-              This is a saved preference only until the worker is implemented.
+              Disabling this pauses future scheduled sends; in-progress provider requests may still finish.
             </span>
           </span>
         </label>
