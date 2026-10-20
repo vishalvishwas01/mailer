@@ -1,9 +1,9 @@
-
 import "server-only";
 
 import { DateTime } from "luxon";
 import { connectDB } from "@/lib/mongodb";
 import MailerSchedule from "@/models/MailerSchedule";
+import MailerScheduleState from "@/models/MailerScheduleState";
 import EmailSend from "@/models/EmailSend";
 
 type EligibilityResult =
@@ -16,7 +16,6 @@ export async function checkMailerEligibility(
   await connectDB();
 
   const schedule = await MailerSchedule.findOne({ key: "default" }).lean();
-
   if (!schedule) {
     return { eligible: false, reason: "Schedule settings are missing." };
   }
@@ -25,17 +24,13 @@ export async function checkMailerEligibility(
     return { eligible: false, reason: "Scheduling is disabled." };
   }
 
-  const currentTime = DateTime.fromJSDate(now, {
-    zone: schedule.timezone,
-  });
-
+  const currentTime = DateTime.fromJSDate(now, { zone: schedule.timezone });
   if (!currentTime.isValid) {
     return { eligible: false, reason: "Invalid schedule timezone." };
   }
 
   const [startHour, startMinute] = schedule.startTime.split(":").map(Number);
   const [endHour, endMinute] = schedule.endTime.split(":").map(Number);
-
   const currentMinutes = currentTime.hour * 60 + currentTime.minute;
   const startMinutes = startHour * 60 + startMinute;
   const endMinutes = endHour * 60 + endMinute;
@@ -51,15 +46,22 @@ export async function checkMailerEligibility(
     return { eligible: false, reason: "Outside the sending window." };
   }
 
+  const localDate = currentTime.toISODate();
+  if (!localDate) {
+    return { eligible: false, reason: "Unable to determine local schedule date." };
+  }
+
+  const state = await MailerScheduleState.findOne({ key: "default" }).lean();
+  const storedCount = state?.localDate === localDate ? state.dailyCount : 0;
+
   const dayStart = currentTime.startOf("day").toUTC().toJSDate();
   const dayEnd = currentTime.plus({ days: 1 }).startOf("day").toUTC().toJSDate();
-
-  const dailyCount = await EmailSend.countDocuments({
+  const historicalCount = await EmailSend.countDocuments({
     status: { $in: ["sending", "sent", "unknown"] },
     attemptedAt: { $gte: dayStart, $lt: dayEnd },
   });
 
-  if (dailyCount >= schedule.dailyLimit) {
+  if (Math.max(storedCount, historicalCount) >= schedule.dailyLimit) {
     return { eligible: false, reason: "Daily sending limit reached." };
   }
 
@@ -70,10 +72,18 @@ export async function checkMailerEligibility(
     .select("attemptedAt")
     .lean();
 
-  if (lastSend) {
-    const elapsedMinutes =
-      (now.getTime() - new Date(lastSend.attemptedAt).getTime()) / 60_000;
+  const lastReservation = state?.lastReservedAt;
+  const lastActivity =
+    lastSend &&
+    (!lastReservation ||
+      new Date(lastSend.attemptedAt).getTime() >
+        new Date(lastReservation).getTime())
+      ? new Date(lastSend.attemptedAt)
+      : lastReservation;
 
+  if (lastActivity) {
+    const elapsedMinutes =
+      (now.getTime() - new Date(lastActivity).getTime()) / 60_000;
     if (elapsedMinutes < schedule.intervalMinutes) {
       return {
         eligible: false,
