@@ -40,7 +40,7 @@ export async function proxy(request: NextRequest) {
   if (pathname === "/login" || pathname === "/api/auth/login") return NextResponse.next();
 
   // Allow the scheduled Vercel cron only when it supplies the configured secret.
-  if (pathname === "/api/email-worker") {
+  if (pathname === "/api/email-worker" || pathname === "/api/replies/poll") {
     const cronSecret = process.env.CRON_SECRET;
     const authorization = request.headers.get("authorization");
     if (cronSecret && authorization === `Bearer ${cronSecret}`) return NextResponse.next();
