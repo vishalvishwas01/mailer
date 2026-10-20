@@ -5,46 +5,14 @@ import { getAuthenticatedGmailClient } from "@/lib/gmail-client";
 import EmailDraft from "@/models/EmailDraft";
 import EmailSend from "@/models/EmailSend";
 import Contact from "@/models/Contact";
+import CampaignDraft from "@/models/CampaignDraft";
+import Resume from "@/models/Resume";
+import { readResumeFile } from "@/lib/gridfs";
+import { createRawEmail } from "@/lib/mime-email";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
-
-function createRawEmail({
-  from,
-  to,
-  subject,
-  body,
-}: {
-  from: string;
-  to: string;
-  subject: string;
-  body: string;
-}) {
-  const encodedSubject = Buffer.from(subject, "utf8").toString("base64");
-
-  const encodedBody = Buffer.from(
-    body.replace(/\r?\n/g, "\r\n"),
-    "utf8"
-  ).toString("base64");
-
-  const mimeMessage = [
-    `From: ${from}`,
-    `To: ${to}`,
-    `Subject: =?UTF-8?B?${encodedSubject}?=`,
-    "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    encodedBody,
-  ].join("\r\n");
-
-  return Buffer.from(mimeMessage, "utf8")
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
 
 export async function POST(
   _request: NextRequest,
@@ -99,6 +67,23 @@ export async function POST(
       );
     }
 
+    const campaign = await CampaignDraft.findById(emailDraft.campaignDraftId).lean();
+    const resume = campaign ? await Resume.findById(campaign.resumeId).lean() : null;
+    if (!resume) {
+      return NextResponse.json({ error: "The campaign resume is missing. Upload or select a resume before sending." }, { status: 409 });
+    }
+
+    let resumeBuffer: Buffer;
+    try {
+      resumeBuffer = await readResumeFile(resume.fileId);
+      if (!resumeBuffer.length || resumeBuffer.length > 5 * 1024 * 1024) {
+        throw new Error("Resume attachment is empty or exceeds 5 MB.");
+      }
+    } catch (error) {
+      console.error("Unable to load resume for manual email:", error);
+      return NextResponse.json({ error: "Unable to read the campaign resume. Email was not sent." }, { status: 500 });
+    }
+
     const { gmail, account } = await getAuthenticatedGmailClient();
 
     // Create the record before contacting Gmail. Unique indexes
@@ -122,6 +107,11 @@ export async function POST(
         to: contact.email,
         subject: emailDraft.subject,
         body: emailDraft.body,
+        attachment: {
+          filename: resume.originalName,
+          mimeType: resume.mimeType,
+          content: resumeBuffer,
+        },
       });
 
       const response = await gmail.users.messages.send({
