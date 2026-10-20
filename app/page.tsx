@@ -260,6 +260,18 @@ export default function Home() {
           >
             Send History
           </a>
+          <a
+            href="/schedule"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+          >
+            Schedule
+          </a>
+          <a
+            href="/replies"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+          >
+            Replies
+          </a>
         </div>
 
         {visibleMessage && (
