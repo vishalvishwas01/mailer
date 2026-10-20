@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
+import LogoutButton from "@/components/LogoutButton";
 
 const links = [
   { href: "/", label: "Overview" },
@@ -15,7 +16,6 @@ const links = [
 
 export default function AppNavbar() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   if (pathname === "/login") return null;
 
   return (
@@ -31,8 +31,8 @@ export default function AppNavbar() {
               </Link>
             );
           })}
-          {pathname === "/contacts" && searchParams.get("view") === "queue" ? <span className="rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">Queue</span> : null}
         </nav>
+        <LogoutButton />
       </div>
     </div>
   );

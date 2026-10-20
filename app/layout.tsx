@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import LogoutButton from "@/components/LogoutButton";
 import AppNavbar from "@/components/AppNavbar";
 import "./globals.css";
 
@@ -17,7 +16,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full bg-zinc-50 font-sans text-zinc-900">
         <AppNavbar />
-        <LogoutButton />
         {children}
       </body>
     </html>
