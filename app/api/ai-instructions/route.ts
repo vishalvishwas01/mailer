@@ -15,6 +15,7 @@ export async function GET() {
       { $setOnInsert: { key: "default", emailInstructions: DEFAULT_EMAIL_INSTRUCTIONS } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     ).lean();
+    if (!settings) throw new Error("AI instructions could not be initialized.");
     return NextResponse.json({ emailInstructions: settings.emailInstructions });
   } catch (error) {
     console.error("Load AI instructions failed:", error);
@@ -37,6 +38,7 @@ export async function PUT(request: Request) {
       { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
     ).lean();
 
+    if (!settings) throw new Error("AI instructions could not be saved.");
     return NextResponse.json({
       message: "AI instructions saved. Future email generations will use the updated instructions.",
       emailInstructions: settings.emailInstructions,

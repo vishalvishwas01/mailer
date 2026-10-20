@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 type Template = {
   _id: string;
@@ -26,18 +26,6 @@ export default function SettingsPage() {
     setMessage(text);
     setError(isError);
   };
-
-  const loadTemplates = useCallback(async () => {
-    const response = await fetch("/api/templates", { cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error ?? "Could not load templates.");
-    const items: Template[] = data.templates ?? [];
-    setTemplates(items);
-    if (selectedId) {
-      const selected = items.find((item) => item._id === selectedId);
-      if (selected) setTemplate({ name: selected.name, subject: selected.subject, body: selected.body });
-    }
-  }, [selectedId]);
 
   useEffect(() => {
     let cancelled = false;
