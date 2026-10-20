@@ -7,16 +7,13 @@ import MailerSchedule from "@/models/MailerSchedule";
 import MailerScheduleState from "@/models/MailerScheduleState";
 import MailerScheduleReservation from "@/models/MailerScheduleReservation";
 import EmailSend from "@/models/EmailSend";
+import EmailQueueItem from "@/models/EmailQueueItem";
 
 type ReservationResult =
   | { reserved: true; reservedAt: Date; localDate: string; alreadyReserved?: boolean }
   | { reserved: false; reason: string };
 
-function isInsideWindow(
-  current: DateTime,
-  startTime: string,
-  endTime: string
-): boolean {
+function isInsideWindow(current: DateTime, startTime: string, endTime: string) {
   const [startHour, startMinute] = startTime.split(":").map(Number);
   const [endHour, endMinute] = endTime.split(":").map(Number);
   const minuteOfDay = current.hour * 60 + current.minute;
@@ -38,12 +35,9 @@ export async function reserveMailerScheduleSlot(
 
   await connectDB();
 
-  // Idempotency: a queue item that already owns a reservation must never
-  // increment the schedule counters a second time.
-  const existingReservation = await MailerScheduleReservation.findOne({
-    queueItemId,
-  }).lean();
-
+  // The reservation is unique per queue item, so retries never increment
+  // the scheduling counter a second time.
+  const existingReservation = await MailerScheduleReservation.findOne({ queueItemId }).lean();
   if (existingReservation) {
     return {
       reserved: true,
@@ -75,96 +69,73 @@ export async function reserveMailerScheduleSlot(
   const dayStart = localNow.startOf("day").toUTC().toJSDate();
   const dayEnd = localNow.plus({ days: 1 }).startOf("day").toUTC().toJSDate();
 
-  // Reconcile history first so deployments with earlier manual sends do not
-  // begin with an empty daily counter. Reservation records and send records
-  // are counted by queue item/email draft, avoiding double counting a send
-  // that already has a reservation.
-  const alreadyReservedSendDraftIds = await MailerScheduleReservation.distinct(
-    "queueItemId"
-  );
-  const reservedQueueItems = await mongoose.model("EmailQueueItem").find({
-    _id: { $in: alreadyReservedSendDraftIds },
+  // Count queue reservations already made today. This is authoritative for
+  // queued work; send history is added only for manual sends without a queue.
+  const reservationsToday = await MailerScheduleReservation.countDocuments({
+    localDate,
+  });
+  const reservedQueueIds = await MailerScheduleReservation.distinct("queueItemId", {
+    localDate,
+  });
+  const reservedQueueItems = await EmailQueueItem.find({
+    _id: { $in: reservedQueueIds },
   }).select("emailDraftId").lean();
-  const reservedEmailDraftIds = reservedQueueItems.map((item: { emailDraftId: mongoose.Types.ObjectId }) => item.emailDraftId);
+  const reservedDraftIds = reservedQueueItems.map((item) => item.emailDraftId);
 
-  const historicalSends = await EmailSend.find({
+  const manualSendsToday = await EmailSend.countDocuments({
     status: { $in: ["sending", "sent", "unknown"] },
     attemptedAt: { $gte: dayStart, $lt: dayEnd },
-    emailDraftId: { $nin: reservedEmailDraftIds },
+    emailDraftId: { $nin: reservedDraftIds },
+  });
+
+  const effectiveDailyCount = reservationsToday + manualSendsToday;
+
+  const latestReservation = await MailerScheduleReservation.findOne()
+    .sort({ reservedAt: -1 })
+    .select("reservedAt")
+    .lean();
+  const latestSend = await EmailSend.findOne({
+    status: { $in: ["sending", "sent", "unknown"] },
   })
-    .select("attemptedAt emailDraftId")
     .sort({ attemptedAt: -1 })
+    .select("attemptedAt")
     .lean();
 
-  const stateNow = await MailerScheduleState.findOne({ key: "default" }).lean();
-  const storedDailyCount =
-    stateNow?.localDate === localDate ? stateNow.dailyCount : 0;
-  const effectiveDailyCount = Math.max(storedDailyCount, historicalSends.length);
-
-  const latestHistoricalSend = historicalSends[0];
-  const lastReservedAt =
-    stateNow?.lastReservedAt && stateNow.localDate === localDate
-      ? stateNow.lastReservedAt
-      : undefined;
-  const latestActivity =
-    latestHistoricalSend &&
-    (!lastReservedAt ||
-      new Date(latestHistoricalSend.attemptedAt).getTime() >
-        new Date(lastReservedAt).getTime())
-      ? new Date(latestHistoricalSend.attemptedAt)
-      : lastReservedAt;
+  const lastActivityAt = Math.max(
+    latestReservation?.reservedAt
+      ? new Date(latestReservation.reservedAt).getTime()
+      : 0,
+    latestSend?.attemptedAt
+      ? new Date(latestSend.attemptedAt).getTime()
+      : 0,
+    0
+  );
 
   if (effectiveDailyCount >= schedule.dailyLimit) {
     return { reserved: false, reason: "Daily sending limit reached." };
   }
 
-  // Respect the interval across calendar-day boundaries too.
-  if (stateNow?.lastReservedAt) {
-    const elapsed = now.getTime() - new Date(stateNow.lastReservedAt).getTime();
-    if (elapsed < schedule.intervalMinutes * 60_000) {
-      return {
-        reserved: false,
-        reason: `Wait until the ${schedule.intervalMinutes}-minute interval has elapsed.`,
-      };
-    }
+  if (lastActivityAt > 0 && now.getTime() - lastActivityAt < schedule.intervalMinutes * 60_000) {
+    return {
+      reserved: false,
+      reason: `Wait until the ${schedule.intervalMinutes}-minute interval has elapsed.`,
+    };
   }
 
-  if (latestActivity) {
-    const elapsed = now.getTime() - latestActivity.getTime();
-    if (elapsed < schedule.intervalMinutes * 60_000) {
-      return {
-        reserved: false,
-        reason: `Wait until the ${schedule.intervalMinutes}-minute interval has elapsed.`,
-      };
-    }
-  }
-
-  // Initialize state without racing into an upsert duplicate-key failure.
+  // Ensure the singleton state exists; only one worker should make a
+  // reservation at a time because it must hold the worker lock.
   try {
     await MailerScheduleState.updateOne(
       { key: "default" },
-      {
-        $setOnInsert: {
-          key: "default",
-          localDate,
-          dailyCount: 0,
-        },
-      },
+      { $setOnInsert: { key: "default", localDate, dailyCount: 0 } },
       { upsert: true }
     );
   } catch (error) {
-    if (
-      !error ||
-      typeof error !== "object" ||
-      !("code" in error) ||
-      error.code !== 11000
-    ) {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== 11000) {
       throw error;
     }
   }
 
-  // A conditional atomic update is the final concurrency guard. The worker
-  // lock is also required by the worker, but this check protects state itself.
   const state = await MailerScheduleState.findOneAndUpdate(
     {
       key: "default",
@@ -199,11 +170,7 @@ export async function reserveMailerScheduleSlot(
           lastQueueItemId: { $literal: new mongoose.Types.ObjectId(queueItemId) },
         },
       },
-      {
-        $set: {
-          dailyCount: { $add: ["$dailyCount", 1] },
-        },
-      },
+      { $set: { dailyCount: { $add: ["$dailyCount", 1] } } },
     ],
     { new: true }
   ).lean();
@@ -222,24 +189,10 @@ export async function reserveMailerScheduleSlot(
       reservedAt: now,
     });
 
-    return {
-      reserved: true,
-      reservedAt: reservation.reservedAt,
-      localDate,
-    };
+    return { reserved: true, reservedAt: reservation.reservedAt, localDate };
   } catch (error) {
-    // A unique-key race means a reservation already exists. Do not decrement
-    // the global counter because another actor may have updated it after us.
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === 11000
-    ) {
-      const reservation = await MailerScheduleReservation.findOne({
-        queueItemId,
-      }).lean();
-
+    if (error && typeof error === "object" && "code" in error && error.code === 11000) {
+      const reservation = await MailerScheduleReservation.findOne({ queueItemId }).lean();
       if (reservation) {
         return {
           reserved: true,
@@ -248,10 +201,7 @@ export async function reserveMailerScheduleSlot(
           alreadyReserved: true,
         };
       }
-      return {
-        reserved: false,
-        reason: "Reservation conflict. Retry the worker later.",
-      };
+      return { reserved: false, reason: "Reservation conflict. Retry the worker later." };
     }
     throw error;
   }
