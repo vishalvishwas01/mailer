@@ -88,6 +88,10 @@ const EmailSendSchema = new Schema<IEmailSend>(
     sentAt: {
       type: Date,
     },
+    lastReplyCheckedAt: {
+      type: Date,
+      index: true,
+    },
   },
   { timestamps: true }
 );
