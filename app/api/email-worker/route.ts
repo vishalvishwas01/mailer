@@ -2,9 +2,6 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { runEmailWorker } from "@/lib/email-worker";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 function hasValidCronSecret(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const authorization = request.headers.get("authorization") ?? "";

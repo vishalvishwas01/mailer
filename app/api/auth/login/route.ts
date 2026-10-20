@@ -3,9 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import LoginAttempt from "@/models/LoginAttempt";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 const SESSION_COOKIE = "mailer_session";
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 

@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkMailerEligibility } from "@/lib/mailer-scheduler";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 export async function GET() {
   try {
     const result = await checkMailerEligibility();

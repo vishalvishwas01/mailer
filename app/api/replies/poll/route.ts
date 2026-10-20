@@ -5,9 +5,6 @@ import { getAuthenticatedGmailClientForAccount } from "@/lib/gmail-client";
 import EmailSend from "@/models/EmailSend";
 import EmailReply from "@/models/EmailReply";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 function authorized(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const supplied = Buffer.from(request.headers.get("authorization") ?? "");
