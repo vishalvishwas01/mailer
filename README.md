@@ -41,3 +41,8 @@ The scheduler uses the logical sending window as the daily limit period, includi
 - Do not commit contact lists, resumes, OAuth tokens, `.env.local`, or real recipient data. The repository's example data files should contain synthetic data only.
 - Keep the scheduler disabled until credentials and Gmail permissions are configured and the workflow has been tested with a controlled recipient.
 - This project does not guarantee inbox delivery. Gmail's send response only confirms acceptance by Gmail, not recipient delivery.
+
+
+## AI instructions and email templates
+
+Open **AI & Templates** from the dashboard to edit the OpenAI system instructions and manage email templates. Both are stored in MongoDB. The system instructions are initialized with the application's default prompt the first time settings are opened; subsequent edits are used for future generated drafts. Existing drafts are not rewritten. Templates can be created and edited on the same page, and support `{{name}}`, `{{email}}`, `{{company}}`, and `{{website}}` placeholders.
