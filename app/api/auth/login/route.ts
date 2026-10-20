@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/mongodb";
+import LoginAttempt from "@/models/LoginAttempt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,13 +39,42 @@ export async function POST(request: NextRequest) {
       ? body.password
       : "";
 
-  const supplied = Buffer.from(suppliedPassword);
-  const expected = Buffer.from(configuredPassword);
-  const matches =
-    supplied.length === expected.length && timingSafeEqual(supplied, expected);
+  const ip = request.headers.get("x-real-ip") ??
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    "unknown";
+  const ipHash = createHmac("sha256", sessionSecret).update(`login-ip:${ip}`).digest("hex");
 
-  if (!matches) {
-    return NextResponse.json({ error: "Invalid password." }, { status: 401 });
+  try {
+    await connectDB();
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+    const recentFailures = await LoginAttempt.countDocuments({
+      ipHash,
+      attemptedAt: { $gte: cutoff },
+    });
+    if (recentFailures >= 10) {
+      return NextResponse.json(
+        { error: "Too many sign-in attempts. Wait 15 minutes before trying again." },
+        { status: 429 }
+      );
+    }
+
+    const supplied = Buffer.from(suppliedPassword);
+    const expected = Buffer.from(configuredPassword);
+    const matches =
+      supplied.length === expected.length && timingSafeEqual(supplied, expected);
+
+    if (!matches) {
+      await LoginAttempt.create({ ipHash, attemptedAt: new Date() });
+      return NextResponse.json({ error: "Invalid password." }, { status: 401 });
+    }
+
+    await LoginAttempt.deleteMany({ ipHash });
+  } catch (error) {
+    console.error("Login verification unavailable:", error);
+    return NextResponse.json(
+      { error: "Sign-in is temporarily unavailable. Please try again later." },
+      { status: 503 }
+    );
   }
 
   const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
