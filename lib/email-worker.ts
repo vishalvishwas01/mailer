@@ -170,7 +170,7 @@ export async function runEmailWorker() {
         status: "sending",
         attemptedAt: new Date(),
       });
-      sendRecordId = sendRecordId;
+      sendRecordId = sendRecord._id;
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === 11000) {
         await finishQueueItem(item._id, "unknown", "Duplicate send record conflict; no second send was attempted.");
