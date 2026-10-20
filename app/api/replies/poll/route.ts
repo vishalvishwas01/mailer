@@ -32,10 +32,15 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recheckBefore = new Date(Date.now() - 14 * 60 * 1000);
     const sends = await EmailSend.find({
       status: "sent",
       gmailThreadId: { $exists: true, $ne: "" },
       sentAt: { $gte: since },
+      $or: [
+        { lastReplyCheckedAt: { $exists: false } },
+        { lastReplyCheckedAt: { $lt: recheckBefore } },
+      ],
     }).sort({ lastReplyCheckedAt: 1, sentAt: -1 }).limit(100).lean();
 
     let checkedThreads = 0;
