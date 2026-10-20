@@ -13,11 +13,8 @@ async function isValidSession(token: string | undefined, secret: string | undefi
   if (!token || !secret || secret.length < 32) return false;
   const [expiresText, signatureText, extra] = token.split(".");
   if (!expiresText || !signatureText || extra !== undefined) return false;
-
   const expiresAt = Number(expiresText);
-  if (!Number.isSafeInteger(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
-    return false;
-  }
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) return false;
 
   try {
     const key = await crypto.subtle.importKey(
@@ -40,15 +37,19 @@ async function isValidSession(token: string | undefined, secret: string | undefi
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  if (pathname === "/login" || pathname === "/api/auth/login") {
-    return NextResponse.next();
+  if (pathname === "/login" || pathname === "/api/auth/login") return NextResponse.next();
+
+  // Allow the scheduled Vercel cron only when it supplies the configured secret.
+  if (pathname === "/api/email-worker") {
+    const cronSecret = process.env.CRON_SECRET;
+    const authorization = request.headers.get("authorization");
+    if (cronSecret && authorization === `Bearer ${cronSecret}`) return NextResponse.next();
   }
 
   const valid = await isValidSession(
     request.cookies.get(SESSION_COOKIE)?.value,
     process.env.SESSION_SECRET
   );
-
   if (valid) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) {
