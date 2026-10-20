@@ -4,7 +4,6 @@ import mongoose from "mongoose";
 import { DateTime } from "luxon";
 import { connectDB } from "@/lib/mongodb";
 import MailerSchedule from "@/models/MailerSchedule";
-import MailerScheduleState from "@/models/MailerScheduleState";
 import MailerScheduleReservation from "@/models/MailerScheduleReservation";
 import EmailSend from "@/models/EmailSend";
 import EmailQueueItem from "@/models/EmailQueueItem";
@@ -111,8 +110,8 @@ export async function reserveMailerScheduleSlot(
     };
   }
 
-  // Create a unique reservation before updating the counter. This is fail-closed:
-  // if the process crashes, the slot can be consumed but cannot be consumed twice.
+  // The unique record is the durable reservation. The worker lock serializes
+  // reservations in normal operation. Fail closed if state reconciliation fails.
   let reservation: { reservedAt: Date; localDate: string };
   try {
     const created = await MailerScheduleReservation.create({
@@ -135,51 +134,6 @@ export async function reserveMailerScheduleSlot(
       return { reserved: false, reason: "Reservation conflict. Retry the worker later." };
     }
     throw error;
-  }
-
-  try {
-    await MailerScheduleState.updateOne(
-      { key: "default" },
-      { $setOnInsert: { key: "default", localDate, dailyCount: 0 } },
-      { upsert: true }
-    );
-  } catch (error) {
-    if (!error || typeof error !== "object" || !("code" in error) || error.code !== 11000) {
-      throw error;
-    }
-  }
-
-  const state = await MailerScheduleState.findOneAndUpdate(
-    { key: "default" },
-    [
-      {
-        $set: {
-          dailyCount: {
-            $add: [
-              {
-                $cond: [
-                  { $eq: ["$localDate", localDate] },
-                  { $ifNull: ["$dailyCount", 0] },
-                  dailyCount,
-                ],
-              },
-              1,
-            ],
-          },
-          localDate,
-          lastReservedAt: now,
-          lastQueueItemId: { $literal: new mongoose.Types.ObjectId(queueItemId) },
-        },
-      },
-    ],
-    { new: true }
-  ).lean();
-
-  if (!state) {
-    return {
-      reserved: false,
-      reason: "Reservation recorded but scheduler state could not be updated. Slot remains consumed.",
-    };
   }
 
   return { reserved: true, reservedAt: reservation.reservedAt, localDate };
