@@ -4,7 +4,9 @@ import { DateTime } from "luxon";
 import { connectDB } from "@/lib/mongodb";
 import MailerSchedule from "@/models/MailerSchedule";
 import MailerScheduleState from "@/models/MailerScheduleState";
+import MailerScheduleReservation from "@/models/MailerScheduleReservation";
 import EmailSend from "@/models/EmailSend";
+import EmailQueueItem from "@/models/EmailQueueItem";
 
 type EligibilityResult =
   | { eligible: true; reason: "Eligible to send." }
@@ -19,7 +21,6 @@ export async function checkMailerEligibility(
   if (!schedule) {
     return { eligible: false, reason: "Schedule settings are missing." };
   }
-
   if (!schedule.enabled) {
     return { eligible: false, reason: "Scheduling is disabled." };
   }
@@ -34,7 +35,6 @@ export async function checkMailerEligibility(
   const currentMinutes = currentTime.hour * 60 + currentTime.minute;
   const startMinutes = startHour * 60 + startMinute;
   const endMinutes = endHour * 60 + endMinute;
-
   const insideWindow =
     startMinutes === endMinutes
       ? true
@@ -51,45 +51,65 @@ export async function checkMailerEligibility(
     return { eligible: false, reason: "Unable to determine local schedule date." };
   }
 
-  const state = await MailerScheduleState.findOne({ key: "default" }).lean();
-  const storedCount = state?.localDate === localDate ? state.dailyCount : 0;
-
   const dayStart = currentTime.startOf("day").toUTC().toJSDate();
   const dayEnd = currentTime.plus({ days: 1 }).startOf("day").toUTC().toJSDate();
-  const historicalCount = await EmailSend.countDocuments({
+
+  const reservationsToday = await MailerScheduleReservation.countDocuments({
+    localDate,
+  });
+  const reservedQueueIds = await MailerScheduleReservation.distinct("queueItemId", {
+    localDate,
+  });
+  const reservedQueueItems = await EmailQueueItem.find({
+    _id: { $in: reservedQueueIds },
+  }).select("emailDraftId").lean();
+  const reservedDraftIds = reservedQueueItems.map((item) => item.emailDraftId);
+
+  const manualSendsToday = await EmailSend.countDocuments({
     status: { $in: ["sending", "sent", "unknown"] },
     attemptedAt: { $gte: dayStart, $lt: dayEnd },
+    emailDraftId: { $nin: reservedDraftIds },
   });
 
-  if (Math.max(storedCount, historicalCount) >= schedule.dailyLimit) {
+  const state = await MailerScheduleState.findOne({ key: "default" }).lean();
+  const dailyCount = Math.max(
+    state?.localDate === localDate ? state.dailyCount : 0,
+    reservationsToday + manualSendsToday
+  );
+
+  if (dailyCount >= schedule.dailyLimit) {
     return { eligible: false, reason: "Daily sending limit reached." };
   }
 
-  const lastSend = await EmailSend.findOne({
+  const latestReservation = await MailerScheduleReservation.findOne()
+    .sort({ reservedAt: -1 })
+    .select("reservedAt")
+    .lean();
+  const latestSend = await EmailSend.findOne({
     status: { $in: ["sending", "sent", "unknown"] },
   })
     .sort({ attemptedAt: -1 })
     .select("attemptedAt")
     .lean();
 
-  const lastReservation = state?.lastReservedAt;
-  const lastActivity =
-    lastSend &&
-    (!lastReservation ||
-      new Date(lastSend.attemptedAt).getTime() >
-        new Date(lastReservation).getTime())
-      ? new Date(lastSend.attemptedAt)
-      : lastReservation;
+  const lastActivityAt = Math.max(
+    latestReservation?.reservedAt
+      ? new Date(latestReservation.reservedAt).getTime()
+      : 0,
+    latestSend?.attemptedAt
+      ? new Date(latestSend.attemptedAt).getTime()
+      : 0,
+    0
+  );
 
-  if (lastActivity) {
-    const elapsedMinutes =
-      (now.getTime() - new Date(lastActivity).getTime()) / 60_000;
-    if (elapsedMinutes < schedule.intervalMinutes) {
-      return {
-        eligible: false,
-        reason: `Wait until the ${schedule.intervalMinutes}-minute interval has elapsed.`,
-      };
-    }
+  if (
+    lastActivityAt > 0 &&
+    now.getTime() - lastActivityAt < schedule.intervalMinutes * 60_000
+  ) {
+    return {
+      eligible: false,
+      reason: `Wait until the ${schedule.intervalMinutes}-minute interval has elapsed.`,
+    };
   }
 
   return { eligible: true, reason: "Eligible to send." };
