@@ -1,0 +1,215 @@
+import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
+import { connectDB } from "@/lib/mongodb";
+import { getAuthenticatedGmailClient } from "@/lib/gmail-client";
+import EmailDraft from "@/models/EmailDraft";
+import EmailSend from "@/models/EmailSend";
+import Contact from "@/models/Contact";
+
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
+
+function createRawEmail({
+  from,
+  to,
+  subject,
+  body,
+}: {
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+}) {
+  const encodedSubject = Buffer.from(subject, "utf8").toString("base64");
+
+  const encodedBody = Buffer.from(
+    body.replace(/\r?\n/g, "\r\n"),
+    "utf8"
+  ).toString("base64");
+
+  const mimeMessage = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: =?UTF-8?B?${encodedSubject}?=`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    encodedBody,
+  ].join("\r\n");
+
+  return Buffer.from(mimeMessage, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+export async function POST(
+  _request: NextRequest,
+  { params }: RouteContext
+) {
+  let sendRecordId: mongoose.Types.ObjectId | undefined;
+
+  try {
+    const { id } = await params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { error: "Invalid email draft ID." },
+        { status: 400 }
+      );
+    }
+
+    await connectDB();
+
+    const emailDraft = await EmailDraft.findById(id);
+
+    if (!emailDraft) {
+      return NextResponse.json(
+        { error: "Email draft not found." },
+        { status: 404 }
+      );
+    }
+
+    if (emailDraft.status !== "approved") {
+      return NextResponse.json(
+        {
+          error:
+            "Only approved email drafts can be sent. Approve this draft first.",
+        },
+        { status: 409 }
+      );
+    }
+
+    const contact = await Contact.findById(emailDraft.contactId);
+
+    if (!contact) {
+      return NextResponse.json(
+        { error: "Recipient contact not found." },
+        { status: 404 }
+      );
+    }
+
+    if (!contact.email) {
+      return NextResponse.json(
+        { error: "The recipient does not have an email address." },
+        { status: 422 }
+      );
+    }
+
+    const { gmail, account } = await getAuthenticatedGmailClient();
+
+    // Create the record before contacting Gmail. Unique indexes
+    // prevent concurrent requests from creating duplicate records.
+    const sendRecord = await EmailSend.create({
+      campaignDraftId: emailDraft.campaignDraftId,
+      emailDraftId: emailDraft._id,
+      contactId: emailDraft.contactId,
+      gmailAccountId: account.id,
+      recipientEmail: contact.email,
+      senderEmail: account.email,
+      status: "sending",
+      attemptedAt: new Date(),
+    });
+
+    sendRecordId = sendRecord._id;
+
+    try {
+      const raw = createRawEmail({
+        from: account.email,
+        to: contact.email,
+        subject: emailDraft.subject,
+        body: emailDraft.body,
+      });
+
+      const response = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw },
+      });
+
+      const messageId = response.data.id;
+      const threadId = response.data.threadId;
+
+      if (!messageId) {
+        await EmailSend.findByIdAndUpdate(sendRecordId, {
+          status: "unknown",
+          errorMessage:
+            "Gmail returned no message ID. Verify the Gmail Sent folder before taking further action.",
+        });
+
+        return NextResponse.json(
+          {
+            error:
+              "The send result could not be confirmed. Check Gmail Sent before attempting another send.",
+          },
+          { status: 502 }
+        );
+      }
+
+      await EmailSend.findByIdAndUpdate(sendRecordId, {
+        status: "sent",
+        gmailMessageId: messageId,
+        ...(threadId ? { gmailThreadId: threadId } : {}),
+        sentAt: new Date(),
+        $unset: { errorMessage: 1 },
+      });
+
+      return NextResponse.json(
+        {
+          message: "Email sent successfully.",
+          send: {
+            id: sendRecordId.toString(),
+            senderEmail: account.email,
+            recipientEmail: contact.email,
+            status: "sent",
+            gmailMessageId: messageId,
+            gmailThreadId: threadId ?? null,
+          },
+        },
+        { status: 200 }
+      );
+    } catch {
+      // A network error may happen after Gmail has accepted the email.
+      // Mark the result unknown instead of automatically retrying.
+      await EmailSend.findByIdAndUpdate(sendRecordId, {
+        status: "unknown",
+        errorMessage:
+          "Gmail's response could not be confirmed. Check the Gmail Sent folder before taking further action.",
+      });
+
+      return NextResponse.json(
+        {
+          error:
+            "The send result is uncertain. Check Gmail Sent before attempting another send.",
+          status: "unknown",
+        },
+        { status: 502 }
+      );
+    }
+  } catch (error: unknown) {
+    // MongoDB duplicate-key errors indicate a send record already exists.
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === 11000
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "A send record already exists for this draft or campaign recipient. Check the send history before doing anything else.",
+        },
+        { status: 409 }
+      );
+    }
+
+    console.error("Manual email send failed:", error);
+
+    return NextResponse.json(
+      { error: "Unable to process the send request." },
+      { status: 500 }
+    );
+  }
+}
