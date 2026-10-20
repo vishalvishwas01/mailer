@@ -122,6 +122,31 @@ export default function EmailDraftsPage() {
     }
   }
 
+  async function queueEmail(draft: EmailDraftItem) {
+    const contact = getContact(draft);
+    if (!window.confirm(
+      `Queue this approved email to ${contact.email || "the selected recipient"} for scheduled delivery? It will only send when the configured schedule is enabled.`
+    )) return;
+
+    setBusyId(draft._id);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/email-queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailDraftId: draft._id }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not queue this email.");
+      setNotice(`Email queued for ${contact.email || "the recipient"}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not queue this email.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function sendEmail(draft: EmailDraftItem) {
     const contact = getContact(draft);
     const recipient = contact.email || "the selected recipient";
@@ -307,14 +332,24 @@ export default function EmailDraftsPage() {
                   )}
 
                   {draft.status === "approved" && (
-                    <button
-                      type="button"
-                      disabled={isBusy || !contact.email}
-                      onClick={() => void sendEmail(draft)}
-                      className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                    >
-                      {isBusy ? "Processing..." : "Send email"}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        disabled={isBusy || !contact.email}
+                        onClick={() => void queueEmail(draft)}
+                        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                      >
+                        {isBusy ? "Processing..." : "Queue for schedule"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy || !contact.email}
+                        onClick={() => void sendEmail(draft)}
+                        className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                      >
+                        {isBusy ? "Processing..." : "Send now"}
+                      </button>
+                    </>
                   )}
 
                   {draft.status === "rejected" && (
