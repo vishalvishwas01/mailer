@@ -246,50 +246,6 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="mb-8 flex flex-wrap gap-3">
-          <a href="/contacts" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50">Contacts</a>
-          <a href="/contacts/import" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50">Upload CSV</a>
-
-          <a
-            href="/settings"
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-          >
-            AI & Templates
-          </a>
-
-          <a
-            href="/email-drafts"
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-          >
-            Email Drafts
-          </a>
-
-          <a
-            href="/email-sends"
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-          >
-            Send History
-          </a>
-          <a
-            href="/schedule"
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-          >
-            Schedule
-          </a>
-          <a
-            href="/replies"
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-          >
-            Replies
-          </a>
-          <a
-            href="/email-queue"
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-          >
-            Queue
-          </a>
-        </div>
-
         {visibleMessage && (
           <div
             role="status"
