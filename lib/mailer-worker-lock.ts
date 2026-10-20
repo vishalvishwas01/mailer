@@ -1,4 +1,3 @@
-
 import "server-only";
 
 import { randomUUID } from "node:crypto";
@@ -6,7 +5,7 @@ import { connectDB } from "@/lib/mongodb";
 import MailerWorkerLock from "@/models/MailerWorkerLock";
 
 const LOCK_KEY = "email-scheduler";
-const LOCK_DURATION_MS = 60_000;
+const LOCK_DURATION_MS = 10 * 60 * 1000;
 
 export async function acquireMailerWorkerLock() {
   await connectDB();
@@ -15,7 +14,6 @@ export async function acquireMailerWorkerLock() {
   const now = new Date();
   const lockedUntil = new Date(now.getTime() + LOCK_DURATION_MS);
 
-  // First try to create the lock.
   try {
     const lock = await MailerWorkerLock.create({
       key: LOCK_KEY,
@@ -23,12 +21,8 @@ export async function acquireMailerWorkerLock() {
       lockedUntil,
     });
 
-    return {
-      acquired: true as const,
-      owner: lock.owner,
-    };
+    return { acquired: true as const, owner: lock.owner };
   } catch (error) {
-    // A duplicate key means another worker may already own the lock.
     if (
       !error ||
       typeof error !== "object" ||
@@ -39,18 +33,9 @@ export async function acquireMailerWorkerLock() {
     }
   }
 
-  // Take over only if the existing lock has expired.
   const lock = await MailerWorkerLock.findOneAndUpdate(
-    {
-      key: LOCK_KEY,
-      lockedUntil: { $lte: now },
-    },
-    {
-      $set: {
-        owner,
-        lockedUntil,
-      },
-    },
+    { key: LOCK_KEY, lockedUntil: { $lte: now } },
+    { $set: { owner, lockedUntil } },
     { new: true }
   ).lean();
 
@@ -58,20 +43,23 @@ export async function acquireMailerWorkerLock() {
     return { acquired: false as const };
   }
 
-  return {
-    acquired: true as const,
-    owner,
-  };
+  return { acquired: true as const, owner };
+}
+
+export async function renewMailerWorkerLock(owner: string) {
+  await connectDB();
+  const lockedUntil = new Date(Date.now() + LOCK_DURATION_MS);
+  const lock = await MailerWorkerLock.findOneAndUpdate(
+    { key: LOCK_KEY, owner, lockedUntil: { $gt: new Date() } },
+    { $set: { lockedUntil } },
+    { new: true }
+  ).lean();
+
+  return Boolean(lock);
 }
 
 export async function releaseMailerWorkerLock(owner: string) {
   await connectDB();
-
-  // Never release a lock owned by another worker.
-  const result = await MailerWorkerLock.deleteOne({
-    key: LOCK_KEY,
-    owner,
-  });
-
+  const result = await MailerWorkerLock.deleteOne({ key: LOCK_KEY, owner });
   return result.deletedCount === 1;
 }
