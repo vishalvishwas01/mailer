@@ -1,4 +1,3 @@
-
 import "server-only";
 
 import { connectDB } from "@/lib/mongodb";
@@ -22,17 +21,29 @@ export async function runEmailWorker() {
 
   try {
     const eligibility = await checkMailerEligibility();
-
     if (!eligibility.eligible) {
-      return {
-        processed: false,
-        reason: eligibility.reason,
-      };
+      return { processed: false, reason: eligibility.reason };
     }
 
     await connectDB();
 
-    // Find a candidate without changing its status yet.
+    // Do not automatically retry expired processing items. Delivery outcome
+    // could be unknown once a real provider call is connected.
+    await EmailQueueItem.updateMany(
+      {
+        status: "processing",
+        lockedUntil: { $lte: new Date() },
+      },
+      {
+        $set: {
+          status: "unknown",
+          lastError:
+            "Worker lease expired. Delivery outcome must be checked manually before retrying.",
+        },
+        $unset: { lockedUntil: 1 },
+      }
+    );
+
     const candidate = await EmailQueueItem.findOne({
       status: "queued",
       scheduledFor: { $lte: new Date() },
@@ -47,19 +58,14 @@ export async function runEmailWorker() {
       };
     }
 
-    // Reserve the sending slot for this exact queue item.
     const reservation = await reserveMailerScheduleSlot(
       candidate._id.toString()
     );
 
     if (!reservation.reserved) {
-      return {
-        processed: false,
-        reason: reservation.reason,
-      };
+      return { processed: false, reason: reservation.reason };
     }
 
-    // Claim only the item for which the slot was reserved.
     const item = await EmailQueueItem.findOneAndUpdate(
       {
         _id: candidate._id,
@@ -72,15 +78,12 @@ export async function runEmailWorker() {
           claimedAt: new Date(),
           lockedUntil: new Date(Date.now() + 5 * 60 * 1000),
         },
-        $inc: {
-          attempts: 1,
-        },
+        $inc: { attempts: 1 },
       },
       { new: true }
     ).lean();
 
     if (!item) {
-      // Do not reuse the reservation. It may already have consumed a slot.
       return {
         processed: false,
         reason:
@@ -90,7 +93,8 @@ export async function runEmailWorker() {
 
     return {
       processed: true,
-      reason: "Queue item reserved and claimed. Email delivery is not connected.",
+      reason:
+        "Queue item reserved and claimed. Email delivery is not connected.",
       queueItemId: item._id.toString(),
       emailDraftId: item.emailDraftId.toString(),
       senderEmail: item.senderEmail,
