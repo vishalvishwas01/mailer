@@ -111,8 +111,8 @@ export async function reserveMailerScheduleSlot(
     };
   }
 
-  // Insert the unique reservation first. If any later state update fails, the
-  // slot remains consumed (safe fail-closed behavior, not double delivery).
+  // Create a unique reservation before updating the counter. This is fail-closed:
+  // if the process crashes, the slot can be consumed but cannot be consumed twice.
   let reservation: { reservedAt: Date; localDate: string };
   try {
     const created = await MailerScheduleReservation.create({
@@ -154,14 +154,19 @@ export async function reserveMailerScheduleSlot(
     [
       {
         $set: {
-          localDate,
           dailyCount: {
-            $cond: [
-              { $eq: ["$localDate", localDate] },
-              { $add: [{ $ifNull: ["$dailyCount", 0] }, 1] },
-              { $add: [dailyCount, 1] },
+            $add: [
+              {
+                $cond: [
+                  { $eq: ["$localDate", localDate] },
+                  { $ifNull: ["$dailyCount", 0] },
+                  dailyCount,
+                ],
+              },
+              1,
             ],
           },
+          localDate,
           lastReservedAt: now,
           lastQueueItemId: { $literal: new mongoose.Types.ObjectId(queueItemId) },
         },
