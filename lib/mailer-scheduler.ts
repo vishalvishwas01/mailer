@@ -6,7 +6,6 @@ import MailerSchedule from "@/models/MailerSchedule";
 import MailerScheduleReservation from "@/models/MailerScheduleReservation";
 import EmailSend from "@/models/EmailSend";
 import EmailQueueItem from "@/models/EmailQueueItem";
-import EmailQueueItem from "@/models/EmailQueueItem";
 
 type EligibilityResult =
   | { eligible: true; reason: "Eligible to send." }
