@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 
@@ -15,7 +15,7 @@ type ApiError = {
   error?: string;
 };
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [accounts, setAccounts] = useState<GmailAccount[]>([]);
@@ -427,5 +427,14 @@ export default function Home() {
         </footer>
       </div>
     </main>
+  );
+}
+
+
+export default function Home() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-zinc-50" aria-label="Loading Gmail configuration" />}>
+      <HomeContent />
+    </Suspense>
   );
 }

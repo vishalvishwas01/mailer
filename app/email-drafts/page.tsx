@@ -49,7 +49,6 @@ export default function EmailDraftsPage() {
   const [notice, setNotice] = useState("");
 
   const loadDrafts = useCallback(async () => {
-    setLoading(true);
     setError("");
 
     try {
