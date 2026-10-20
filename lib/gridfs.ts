@@ -42,8 +42,8 @@ export async function saveResumeFile(
 
   return new Promise((resolve, reject) => {
     const uploadStream = bucket.openUploadStream(filename, {
-      contentType,
       metadata: {
+        contentType,
         purpose: "resume",
       },
     });

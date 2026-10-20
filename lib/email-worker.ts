@@ -158,9 +158,9 @@ export async function runEmailWorker() {
       };
     }
 
-    let sendRecord: Awaited<ReturnType<typeof EmailSend.create>>;
+    let sendRecordId: mongoose.Types.ObjectId;
     try {
-      sendRecord = await EmailSend.create({
+      const sendRecord = await EmailSend.create({
         campaignDraftId: item.campaignDraftId,
         emailDraftId: item.emailDraftId,
         contactId: item.contactId,
@@ -170,6 +170,7 @@ export async function runEmailWorker() {
         status: "sending",
         attemptedAt: new Date(),
       });
+      sendRecordId = sendRecordId;
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === 11000) {
         await finishQueueItem(item._id, "unknown", "Duplicate send record conflict; no second send was attempted.");
@@ -182,7 +183,7 @@ export async function runEmailWorker() {
     try {
       const { gmail, account } = await getAuthenticatedGmailClientForAccount(item.gmailAccountId.toString());
       if (account.email.toLowerCase() !== item.senderEmail.toLowerCase()) {
-        await EmailSend.findByIdAndUpdate(sendRecord._id, {
+        await EmailSend.findByIdAndUpdate(sendRecordId, {
           status: "failed",
           errorMessage: "Queue sender email no longer matches the connected Gmail account.",
         });
@@ -207,12 +208,12 @@ export async function runEmailWorker() {
 
       if (!response.data.id) {
         const message = "Gmail returned no message ID. Verify Gmail Sent before retrying.";
-        await EmailSend.findByIdAndUpdate(sendRecord._id, { status: "unknown", errorMessage: message });
+        await EmailSend.findByIdAndUpdate(sendRecordId, { status: "unknown", errorMessage: message });
         await finishQueueItem(item._id, "unknown", message);
         return { processed: true, queueItemId: item.id, status: "unknown", reason: message };
       }
 
-      await EmailSend.findByIdAndUpdate(sendRecord._id, {
+      await EmailSend.findByIdAndUpdate(sendRecordId, {
         status: "sent",
         gmailMessageId: response.data.id,
         ...(response.data.threadId ? { gmailThreadId: response.data.threadId } : {}),
@@ -233,7 +234,7 @@ export async function runEmailWorker() {
       // Network/provider errors can happen after Gmail accepted the message.
       // Unknown is deliberate: no automatic retry that might duplicate email.
       const message = "Gmail send outcome could not be confirmed. Check Gmail Sent before retrying.";
-      await EmailSend.findByIdAndUpdate(sendRecord._id, { status: "unknown", errorMessage: message });
+      await EmailSend.findByIdAndUpdate(sendRecordId, { status: "unknown", errorMessage: message });
       await finishQueueItem(item._id, "unknown", message);
       console.error("Queued Gmail send outcome unknown:", error);
       return { processed: true, queueItemId: item.id, status: "unknown", reason: message };
