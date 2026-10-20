@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       status: "sent",
       gmailThreadId: { $exists: true, $ne: "" },
       sentAt: { $gte: since },
-    }).sort({ sentAt: -1 }).limit(100).lean();
+    }).sort({ lastReplyCheckedAt: 1, sentAt: -1 }).limit(100).lean();
 
     let checkedThreads = 0;
     let savedReplies = 0;
@@ -82,6 +82,11 @@ export async function GET(request: NextRequest) {
             }
           }
         }
+
+        await EmailSend.updateOne(
+          { _id: send._id },
+          { $set: { lastReplyCheckedAt: new Date() } }
+        );
       } catch (error) {
         skippedThreads += 1;
         console.error("Could not poll a Gmail thread:", send.gmailThreadId, error);
