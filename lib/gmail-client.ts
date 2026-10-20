@@ -1,5 +1,6 @@
 import "server-only";
 
+import mongoose from "mongoose";
 import { google } from "googleapis";
 import { connectDB } from "@/lib/mongodb";
 import { createGoogleOAuthClient } from "@/lib/google-oauth";
@@ -12,44 +13,31 @@ const REQUIRED_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
 ];
 
-export async function getAuthenticatedGmailClient() {
-  await connectDB();
-
-  // Find the currently selected Gmail account.
-  const settings = await MailerSettings.findOne({ key: "default" });
-
-  if (!settings?.activeGmailAccountId) {
-    throw new Error("No active Gmail account is configured.");
+export async function getAuthenticatedGmailClientForAccount(accountId: string) {
+  if (!mongoose.Types.ObjectId.isValid(accountId)) {
+    throw new Error("Invalid Gmail account ID.");
   }
 
-  // Load encrypted credentials only on the server.
-  const account = await GmailAccount.findById(
-    settings.activeGmailAccountId
-  ).select("+refreshTokenEncrypted +accessTokenEncrypted");
+  await connectDB();
+  const account = await GmailAccount.findById(accountId)
+    .select("+refreshTokenEncrypted +accessTokenEncrypted");
 
   if (!account || account.status !== "connected") {
-    throw new Error("The active Gmail account is not connected.");
+    throw new Error("The selected Gmail account is not connected.");
   }
 
-  // Confirm that the account has the required Gmail permissions.
   const missingScopes = REQUIRED_SCOPES.filter(
     (scope) => !account.scopes.includes(scope)
   );
-
   if (missingScopes.length > 0) {
-    throw new Error(
-      "The active Gmail account is missing required permissions. Reconnect it with the required Gmail permissions."
-    );
+    throw new Error("The selected Gmail account is missing required permissions. Reconnect it with the required Gmail permissions.");
   }
-
   if (!account.refreshTokenEncrypted) {
-    throw new Error("The active Gmail account has no refresh token.");
+    throw new Error("The selected Gmail account has no refresh token.");
   }
 
   const oauthClient = createGoogleOAuthClient();
-
   const refreshToken = decryptToken(account.refreshTokenEncrypted);
-
   const accessToken = account.accessTokenEncrypted
     ? decryptToken(account.accessTokenEncrypted)
     : undefined;
@@ -62,16 +50,19 @@ export async function getAuthenticatedGmailClient() {
       : {}),
   });
 
-  const gmail = google.gmail({
-    version: "v1",
-    auth: oauthClient,
-  });
-
   return {
-    gmail,
-    account: {
-      id: account._id.toString(),
-      email: account.email,
-    },
+    gmail: google.gmail({ version: "v1", auth: oauthClient }),
+    account: { id: account._id.toString(), email: account.email },
   };
+}
+
+export async function getAuthenticatedGmailClient() {
+  await connectDB();
+  const settings = await MailerSettings.findOne({ key: "default" });
+  if (!settings?.activeGmailAccountId) {
+    throw new Error("No active Gmail account is configured.");
+  }
+  return getAuthenticatedGmailClientForAccount(
+    settings.activeGmailAccountId.toString()
+  );
 }
