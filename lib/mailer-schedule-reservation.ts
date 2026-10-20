@@ -65,15 +65,6 @@ export async function reserveMailerScheduleSlot(
   await connectDB();
 
   const existingReservation = await MailerScheduleReservation.findOne({ queueItemId }).lean();
-  if (existingReservation) {
-    return {
-      reserved: true,
-      reservedAt: existingReservation.reservedAt,
-      localDate: existingReservation.localDate,
-      alreadyReserved: true,
-    };
-  }
-
   const schedule = await MailerSchedule.findOne({ key: "default" }).lean();
   if (!schedule || !schedule.enabled) {
     return { reserved: false, reason: "Scheduling is disabled or missing." };
@@ -91,6 +82,21 @@ export async function reserveMailerScheduleSlot(
   const bounds = getWindowBounds(localNow, schedule.startTime, schedule.endTime);
   if (!bounds) {
     return { reserved: false, reason: "Unable to determine local schedule window." };
+  }
+
+  if (existingReservation) {
+    if (existingReservation.localDate !== bounds.localDate) {
+      return {
+        reserved: false,
+        reason: "A reservation from an earlier sending window exists; this queue item requires manual review.",
+      };
+    }
+    return {
+      reserved: true,
+      reservedAt: existingReservation.reservedAt,
+      localDate: existingReservation.localDate,
+      alreadyReserved: true,
+    };
   }
 
   const reservationsInWindow = await MailerScheduleReservation.countDocuments({
