@@ -247,6 +247,9 @@ export default function Home() {
         </header>
 
         <div className="mb-8 flex flex-wrap gap-3">
+          <a href="/contacts" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50">Contacts</a>
+          <a href="/contacts/import" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50">Upload CSV</a>
+
           <a
             href="/settings"
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
