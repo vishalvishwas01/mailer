@@ -8,9 +8,7 @@ const links = [
   { href: "/", label: "Overview" },
   { href: "/contacts", label: "Contacts" },
   { href: "/email-drafts", label: "Email drafts" },
-  { href: "/email-sends", label: "Send history" },
   { href: "/schedule", label: "Schedule" },
-  { href: "/replies", label: "Replies" },
   { href: "/settings", label: "AI & templates" },
 ];
 

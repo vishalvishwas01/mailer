@@ -105,26 +105,24 @@ export default function SchedulePage() {
   }
 
   if (loading) {
-    return <main className="mx-auto max-w-2xl p-8">Loading schedule settings...</main>;
+    return <main className="min-h-[calc(100vh-70px)] bg-zinc-50 px-4 py-8 text-zinc-900 sm:px-6"><div className="mx-auto max-w-2xl">Loading schedule settings...</div></main>;
   }
 
   return (
-    <main className="mx-auto max-w-2xl p-6 sm:p-8">
-      <Link href="/" className="text-sm text-blue-700 hover:underline">
-        ← Back to dashboard
-      </Link>
-
-      <h1 className="mt-5 text-3xl font-bold">Email Schedule</h1>
-      <p className="mt-2 text-sm text-zinc-600">
-        Configure when emails should be eligible for sending.
-      </p>
+    <main className="min-h-[calc(100vh-70px)] bg-zinc-50 px-4 py-8 text-zinc-900 sm:px-6">
+      <div className="mx-auto max-w-2xl">
+      <header className="mb-7">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-600">Delivery settings</p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight">Email Schedule</h1>
+        <p className="mt-2 text-sm text-zinc-500">Configure when emails should be eligible for sending.</p>
+      </header>
 
       <div className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
         When enabled in a deployment with CRON_SECRET configured, approved items in the queue can send real emails automatically during this window. Keep this disabled until your credentials and test recipient are verified.
       </div>
 
-      <form onSubmit={saveSettings} className="mt-6 space-y-6">
-        <label className="flex items-center gap-3 rounded-lg border p-4">
+      <form onSubmit={saveSettings} className="space-y-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
+        <label className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
           <input
             type="checkbox"
             checked={settings.enabled}
@@ -146,7 +144,7 @@ export default function SchedulePage() {
             id="timezone"
             value={settings.timezone}
             onChange={(event) => update("timezone", event.target.value)}
-            className="w-full rounded-lg border p-3"
+            className="w-full rounded-lg border border-zinc-300 bg-white p-3 text-zinc-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
           >
             <option value="Asia/Kolkata">India Standard Time (IST)</option>
             <option value="UTC">UTC</option>
@@ -224,7 +222,7 @@ export default function SchedulePage() {
         <button
           type="submit"
           disabled={saving}
-          className="rounded-lg bg-black px-5 py-3 font-medium text-white disabled:opacity-50"
+          className="rounded-lg bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
         >
           {saving ? "Saving..." : "Save schedule"}
         </button>
@@ -235,6 +233,7 @@ export default function SchedulePage() {
           </p>
         )}
       </form>
+      </div>
     </main>
   );
 }
