@@ -6,6 +6,10 @@ import EmailQueueItem from "@/models/EmailQueueItem";
 import EmailDraft from "@/models/EmailDraft";
 import EmailSend from "@/models/EmailSend";
 import Contact from "@/models/Contact";
+import CampaignDraft from "@/models/CampaignDraft";
+import Resume from "@/models/Resume";
+import { readResumeFile } from "@/lib/gridfs";
+import { randomUUID } from "node:crypto";
 import { getAuthenticatedGmailClientForAccount } from "@/lib/gmail-client";
 import { checkMailerEligibility } from "@/lib/mailer-scheduler";
 import { reserveMailerScheduleSlot } from "@/lib/mailer-schedule-reservation";
@@ -19,27 +23,43 @@ function createRawEmail({
   to,
   subject,
   body,
+  attachment,
 }: {
   from: string;
   to: string;
   subject: string;
   body: string;
+  attachment: { filename: string; mimeType: string; content: Buffer };
 }) {
   const safeHeader = (value: string) => {
     if (/[\r\n]/.test(value)) throw new Error("Invalid line break in email header.");
     return value;
   };
+  const safeFilename = attachment.filename.replace(/["\\\r\n]/g, "_");
+  const boundary = `mailer_${randomUUID().replace(/-/g, "")}`;
   const encodedSubject = Buffer.from(safeHeader(subject), "utf8").toString("base64");
-  const encodedBody = Buffer.from(body.replace(/\r?\n/g, "\r\n"), "utf8").toString("base64");
+  const encodedBody = Buffer.from(body.replace(/\r?\n/g, "\r\n"), "utf8").toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? "";
+  const encodedAttachment = attachment.content.toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? "";
   const mimeMessage = [
     `From: ${safeHeader(from)}`,
     `To: ${safeHeader(to)}`,
     `Subject: =?UTF-8?B?${encodedSubject}?=`,
     "MIME-Version: 1.0",
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: base64",
     "",
     encodedBody,
+    `--${boundary}`,
+    `Content-Type: ${attachment.mimeType}; name="${safeFilename}"`,
+    `Content-Disposition: attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
+    "Content-Transfer-Encoding: base64",
+    "",
+    encodedAttachment,
+    `--${boundary}--`,
+    "",
   ].join("\r\n");
 
   return Buffer.from(mimeMessage, "utf8")
@@ -48,7 +68,6 @@ function createRawEmail({
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
-
 async function finishQueueItem(
   id: mongoose.Types.ObjectId,
   status: "sent" | "failed" | "unknown",
@@ -129,6 +148,25 @@ export async function runEmailWorker() {
       return { processed: true, queueItemId: item.id, status: "failed", reason: "Recipient contact or email address is missing." };
     }
 
+    const campaign = await CampaignDraft.findById(draft.campaignDraftId).lean();
+    const resume = campaign ? await Resume.findById(campaign.resumeId).lean() : null;
+    if (!resume) {
+      await finishQueueItem(item._id, "failed", "Campaign resume is missing; email was not sent.");
+      return { processed: true, queueItemId: item.id, status: "failed", reason: "Campaign resume is missing." };
+    }
+
+    let resumeBuffer: Buffer;
+    try {
+      resumeBuffer = await readResumeFile(resume.fileId);
+      if (!resumeBuffer.length || resumeBuffer.length > 5 * 1024 * 1024) {
+        throw new Error("Resume attachment is empty or exceeds 5 MB.");
+      }
+    } catch (error) {
+      await finishQueueItem(item._id, "failed", "Could not read the campaign resume; email was not sent.");
+      console.error("Could not load campaign resume attachment:", error);
+      return { processed: true, queueItemId: item.id, status: "failed", reason: "Could not load campaign resume attachment." };
+    }
+
     const existingSend = await EmailSend.findOne({
       $or: [
         { emailDraftId: item.emailDraftId },
@@ -194,6 +232,11 @@ export async function runEmailWorker() {
           to: contact.email,
           subject: draft.subject,
           body: draft.body,
+          attachment: {
+            filename: resume.originalName,
+            mimeType: resume.mimeType,
+            content: resumeBuffer,
+          },
         }) },
       });
 
