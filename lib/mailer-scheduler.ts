@@ -6,6 +6,7 @@ import MailerSchedule from "@/models/MailerSchedule";
 import MailerScheduleReservation from "@/models/MailerScheduleReservation";
 import EmailSend from "@/models/EmailSend";
 import EmailQueueItem from "@/models/EmailQueueItem";
+import EmailQueueItem from "@/models/EmailQueueItem";
 
 type EligibilityResult =
   | { eligible: true; reason: "Eligible to send." }
@@ -90,6 +91,8 @@ export async function checkMailerEligibility(
   }).select("emailDraftId").lean();
   const reservedDraftIds = reservedQueueItems.map((item) => item.emailDraftId);
 
+  // A queued email may also have an EmailSend record after delivery. Exclude
+  // those drafts from manual history to avoid counting the same email twice.
   const manualSendsInWindow = await EmailSend.countDocuments({
     status: { $in: ["sending", "sent", "unknown"] },
     attemptedAt: { $gte: bounds.windowStart, $lt: bounds.windowEnd },
