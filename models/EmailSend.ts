@@ -22,6 +22,7 @@ export interface IEmailSend {
 
   attemptedAt: Date;
   sentAt?: Date;
+  lastReplyCheckedAt?: Date;
 
   createdAt: Date;
   updatedAt: Date;
