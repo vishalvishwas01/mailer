@@ -67,7 +67,21 @@ export async function runEmailWorker() {
     if (!candidate) return { processed: false, reason: "No eligible queue items are available." };
 
     const reservation = await reserveMailerScheduleSlot(candidate._id.toString());
-    if (!reservation.reserved) return { processed: false, reason: reservation.reason };
+    if (!reservation.reserved) {
+      if (reservation.reason.includes("earlier sending window")) {
+        await EmailQueueItem.updateOne(
+          { _id: candidate._id, status: "queued" },
+          { $set: { status: "failed", lastError: reservation.reason } }
+        );
+        return {
+          processed: true,
+          queueItemId: candidate._id.toString(),
+          status: "failed",
+          reason: reservation.reason,
+        };
+      }
+      return { processed: false, reason: reservation.reason };
+    }
 
     const item = await EmailQueueItem.findOneAndUpdate(
       { _id: candidate._id, status: "queued", scheduledFor: { $lte: new Date() } },
