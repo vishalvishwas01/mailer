@@ -205,7 +205,7 @@ export default function SchedulePage() {
 
         <div>
           <label htmlFor="dailyLimit" className="mb-2 block text-sm font-medium">
-            Maximum emails per day
+            Maximum emails per sending window
           </label>
           <input
             id="dailyLimit"
