@@ -49,8 +49,6 @@ export default function EmailDraftsPage() {
   const [notice, setNotice] = useState("");
 
   const loadDrafts = useCallback(async () => {
-    setError("");
-
     try {
       const query =
         filter === "all" ? "" : `?status=${encodeURIComponent(filter)}`;
