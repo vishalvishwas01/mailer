@@ -61,3 +61,16 @@ export async function deleteResumeFile(fileId: ObjectId) {
   const bucket = await getResumeBucket();
   await bucket.delete(fileId);
 }
+
+
+export async function readResumeFile(fileId: ObjectId): Promise<Buffer> {
+  const bucket = await getResumeBucket();
+  const stream = bucket.openDownloadStream(fileId);
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks);
+}
