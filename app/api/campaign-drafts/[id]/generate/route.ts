@@ -197,9 +197,13 @@ export async function POST(
     const modelName =
       process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
-    const promptSettings = await AiPromptSettings.findOne({ key: "default" }).lean();
+    const promptSettings = await AiPromptSettings.findOneAndUpdate(
+      { key: "default" },
+      { $setOnInsert: { key: "default", emailInstructions: DEFAULT_EMAIL_INSTRUCTIONS } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean();
     const emailInstructions =
-      promptSettings?.emailInstructions?.trim() || DEFAULT_EMAIL_INSTRUCTIONS;
+      promptSettings.emailInstructions.trim() || DEFAULT_EMAIL_INSTRUCTIONS;
 
     let generated: z.infer<typeof generatedEmailSchema>;
 
