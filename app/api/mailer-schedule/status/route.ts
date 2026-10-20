@@ -1,6 +1,8 @@
-
 import { NextResponse } from "next/server";
 import { checkMailerEligibility } from "@/lib/mailer-scheduler";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
@@ -13,7 +15,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Failed to check mailer schedule:", error);
-
     return NextResponse.json(
       { error: "Unable to check scheduler status." },
       { status: 500 }
