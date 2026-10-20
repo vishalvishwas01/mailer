@@ -1,8 +1,58 @@
 
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { connectDB } from "@/lib/mongodb";
 import Contact from "@/models/Contact";
+
+
+const ManualContactSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email address.").max(254),
+  name: z.string().trim().max(200).optional().default(""),
+  company: z.string().trim().max(200).optional().default(""),
+  website: z.string().trim().max(2048).optional().default(""),
+});
+
+export async function POST(request: Request) {
+  try {
+    const payload = await request.json();
+    const parsed = ManualContactSchema.safeParse(payload);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues.map((issue) => issue.message).join(", ") },
+        { status: 400 }
+      );
+    }
+
+    await connectDB();
+    await Contact.init();
+
+    const email = parsed.data.email;
+    const existing = await Contact.findOne({ email }).select("_id").lean();
+    if (existing) {
+      return NextResponse.json(
+        { error: "A contact with this email address already exists." },
+        { status: 409 }
+      );
+    }
+
+    await Contact.create({
+      email,
+      name: parsed.data.name || undefined,
+      company: parsed.data.company || undefined,
+      website: parsed.data.website || undefined,
+      sourceFile: "Manual entry",
+    });
+
+    return NextResponse.json({ message: "Contact added successfully." }, { status: 201 });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === 11000) {
+      return NextResponse.json({ error: "A contact with this email address already exists." }, { status: 409 });
+    }
+    console.error("Failed to create contact:", error);
+    return NextResponse.json({ error: "Failed to add contact." }, { status: 500 });
+  }
+}
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;

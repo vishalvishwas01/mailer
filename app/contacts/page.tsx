@@ -43,6 +43,9 @@ export default function ContactsPage() {
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
   const [notice, setNotice] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [savingContact, setSavingContact] = useState(false);
+  const [manualContact, setManualContact] = useState({ email: "", name: "", company: "", website: "" });
 
   const load = useCallback(async (page: number, term: string, status: Status, currentView: "contacts" | "queue") => {
     setLoading(true); setError("");
@@ -86,9 +89,56 @@ export default function ContactsPage() {
     <main className="mx-auto min-h-[calc(100vh-70px)] w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
         <div><p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-600">Contact workspace</p><h1 className="mt-2 text-3xl font-bold tracking-tight">{view === "contacts" ? "Contacts & delivery status" : "Email queue"}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">{view === "contacts" ? "See who was contacted, which messages failed, which are queued, and who has replied — all in one place." : "Review scheduled emails and cancel items that have not started processing."}</p></div>
-        <div className="flex flex-wrap gap-2"><button onClick={() => switchView("contacts")} className={"rounded-lg px-4 py-2.5 text-sm font-semibold " + (view === "contacts" ? "bg-indigo-600 text-white" : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50")}>Contacts</button><button onClick={() => switchView("queue")} className={"rounded-lg px-4 py-2.5 text-sm font-semibold " + (view === "queue" ? "bg-indigo-600 text-white" : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50")}>Queue</button><Link href="/contacts/import" className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700">Upload CSV</Link><button onClick={() => void load(pagination.page, search, filter, view)} disabled={loading} className="rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-zinc-50 disabled:opacity-50">Refresh</button></div>
+        <div className="flex flex-wrap gap-2"><button onClick={() => switchView("contacts")} className={"rounded-lg px-4 py-2.5 text-sm font-semibold " + (view === "contacts" ? "bg-indigo-600 text-white" : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50")}>Contacts</button><button onClick={() => switchView("queue")} className={"rounded-lg px-4 py-2.5 text-sm font-semibold " + (view === "queue" ? "bg-indigo-600 text-white" : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50")}>Queue</button><Link href="/contacts/import" className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700">Upload CSV</Link>{view === "contacts" && <button type="button" onClick={() => { setShowAddForm((open) => !open); setError(""); setNotice(""); }} className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">{showAddForm ? "Close form" : "Add manually"}</button>}<button onClick={() => void load(pagination.page, search, filter, view)} disabled={loading} className="rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-zinc-50 disabled:opacity-50">Refresh</button></div>
       </header>
 
+
+      {showAddForm && view === "contacts" && (
+        <section className="mb-6 rounded-2xl border border-indigo-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">Add contact manually</h2>
+            <p className="mt-1 text-sm text-zinc-500">Enter the same fields supported by CSV: email, name, company, and website. Email is required.</p>
+          </div>
+          <form onSubmit={async (event) => {
+            event.preventDefault();
+            setSavingContact(true); setError(""); setNotice("");
+            try {
+              const response = await fetch("/api/contacts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(manualContact),
+              });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.error || "Could not add contact.");
+              setNotice(data.message || "Contact added successfully.");
+              setManualContact({ email: "", name: "", company: "", website: "" });
+              setShowAddForm(false); setFilter("all"); setSearch(""); setSearchInput("");
+              await load(1, "", "all", "contacts");
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "Could not add contact.");
+            } finally {
+              setSavingContact(false);
+            }
+          }} className="grid gap-4 sm:grid-cols-2">
+            <label className="text-sm font-medium text-zinc-700">Email address <span className="text-red-600">*</span>
+              <input required type="email" maxLength={254} value={manualContact.email} onChange={(e) => setManualContact((prev) => ({ ...prev, email: e.target.value }))} placeholder="person@example.com" className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3 py-2.5 font-normal outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
+            </label>
+            <label className="text-sm font-medium text-zinc-700">Full name
+              <input maxLength={200} value={manualContact.name} onChange={(e) => setManualContact((prev) => ({ ...prev, name: e.target.value }))} placeholder="Full name" className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3 py-2.5 font-normal outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
+            </label>
+            <label className="text-sm font-medium text-zinc-700">Company
+              <input maxLength={200} value={manualContact.company} onChange={(e) => setManualContact((prev) => ({ ...prev, company: e.target.value }))} placeholder="Company name" className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3 py-2.5 font-normal outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
+            </label>
+            <label className="text-sm font-medium text-zinc-700">Website
+              <input type="url" maxLength={2048} value={manualContact.website} onChange={(e) => setManualContact((prev) => ({ ...prev, website: e.target.value }))} placeholder="https://example.com" className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3 py-2.5 font-normal outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
+            </label>
+            <div className="flex flex-wrap gap-2 sm:col-span-2">
+              <button type="submit" disabled={savingContact} className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">{savingContact ? "Adding contact..." : "Add contact"}</button>
+              <button type="button" onClick={() => setShowAddForm(false)} disabled={savingContact} className="rounded-lg border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">Cancel</button>
+            </div>
+          </form>
+        </section>
+      )}
       {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       {notice && <div role="status" className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div>}
 
