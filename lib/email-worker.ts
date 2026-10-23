@@ -8,6 +8,7 @@ import EmailSend from "@/models/EmailSend";
 import Contact from "@/models/Contact";
 import CampaignDraft from "@/models/CampaignDraft";
 import Resume from "@/models/Resume";
+import EmailTemplate from "@/models/EmailTemplate";
 import { readResumeFile } from "@/lib/gridfs";
 import { createRawEmail } from "@/lib/mime-email";
 import { getAuthenticatedGmailClientForAccount } from "@/lib/gmail-client";
@@ -119,6 +120,9 @@ export async function runEmailWorker() {
       await finishQueueItem(item._id, "failed", "Campaign resume is missing; email was not sent.");
       return { processed: true, queueItemId: item.id, status: "failed", reason: "Campaign resume is missing." };
     }
+    const template = campaign ? await EmailTemplate.findById(campaign.templateId).lean() : null;
+    const templateAttachment = template?.attachment;
+    const templateAttachmentBuffer = templateAttachment ? await readResumeFile(templateAttachment.fileId) : null;
 
     let resumeBuffer: Buffer;
     try {
@@ -203,6 +207,7 @@ export async function runEmailWorker() {
             mimeType: resume.mimeType,
             content: resumeBuffer,
           },
+          ...(templateAttachment && templateAttachmentBuffer ? { attachments: [{ filename: templateAttachment.originalName, mimeType: templateAttachment.mimeType, content: templateAttachmentBuffer }] } : {}),
         }) },
       });
 

@@ -11,6 +11,8 @@ import Contact from "@/models/Contact";
 import EmailTemplate from "@/models/EmailTemplate";
 import EmailDraft from "@/models/EmailDraft";
 import AiPromptSettings, { DEFAULT_EMAIL_INSTRUCTIONS } from "@/models/AiPromptSettings";
+import MailerSettings from "@/models/MailerSettings";
+import GmailAccount from "@/models/GmailAccount";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -32,6 +34,8 @@ const allowedPlaceholders = new Set([
   "email",
   "company",
   "website",
+  "role",
+  "sender_name",
 ]);
 
 function renderTemplate(
@@ -47,11 +51,11 @@ function renderTemplate(
         throw new Error(`Unsupported placeholder: ${match}`);
       }
 
-      return values[placeholder] ?? "";
+      return values[placeholder] ?? match;
     }
   );
 
-  if (/\{\{|\}\}/.test(rendered)) {
+  if (/\{\{\s*(?!role\s*\}\})[^{}]+\}\}/.test(rendered)) {
     throw new Error("Template contains unresolved placeholders.");
   }
 
@@ -149,7 +153,16 @@ export async function POST(
       email: contact.email,
       company: contact.company ?? "",
       website: contact.website ?? "",
+      role: "{{role}}",
     };
+
+    const mailerSettings = await MailerSettings.findOne({ key: "default" }).lean();
+    const senderAccount = mailerSettings?.activeGmailAccountId
+      ? await GmailAccount.findById(mailerSettings.activeGmailAccountId).select("email").lean()
+      : null;
+    values.sender_name = senderAccount?.email
+      ? senderAccount.email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+      : "";
 
     let templateSubject: string;
     let templateBody: string;

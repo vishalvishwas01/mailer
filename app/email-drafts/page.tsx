@@ -2,7 +2,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 type ContactInfo = {
   _id?: string;
   name?: string;
@@ -198,12 +197,6 @@ export default function EmailDraftsPage() {
           </p>
         </div>
 
-        <Link
-          href="/"
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-        >
-          Back to dashboard
-        </Link>
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">
@@ -300,7 +293,7 @@ export default function EmailDraftsPage() {
                   <p className="mt-5 text-xs font-medium uppercase tracking-wide text-gray-500">
                     Email body
                   </p>
-                  <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-gray-800">
+                  <p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm leading-6 text-gray-800">
                     {draft.body}
                   </p>
                 </div>

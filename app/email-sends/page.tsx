@@ -102,12 +102,6 @@ export default function EmailSendsPage() {
           </p>
         </div>
 
-        <a
-          href="/"
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-        >
-          Back to dashboard
-        </a>
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">

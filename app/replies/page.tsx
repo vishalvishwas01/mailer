@@ -43,7 +43,6 @@ export default function RepliesPage() {
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Replies</h1>
           <p className="mt-2 text-sm text-zinc-600">Replies discovered in Gmail threads for recent sent messages.</p>
         </div>
-        <a href="/" className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium hover:bg-zinc-50">Dashboard</a>
       </div>
 
       {error ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}

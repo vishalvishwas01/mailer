@@ -6,24 +6,29 @@ export function createRawEmail({
   subject,
   body,
   attachment,
+  attachments,
 }: {
   from: string;
   to: string;
   subject: string;
   body: string;
   attachment: { filename: string; mimeType: string; content: Buffer };
+  attachments?: { filename: string; mimeType: string; content: Buffer }[];
 }) {
   const safeHeader = (value: string) => {
     if (/[\r\n]/.test(value)) throw new Error("Invalid line break in email header.");
     return value;
   };
-  const safeFilename = attachment.filename.replace(/["\\\r\n]/g, "_");
+  const allAttachments = [attachment, ...(attachments ?? [])];
   const boundary = `mailer_${randomUUID().replace(/-/g, "")}`;
   const encodedSubject = Buffer.from(safeHeader(subject), "utf8").toString("base64");
   const encodedBody = Buffer.from(body.replace(/\r?\n/g, "\r\n"), "utf8")
     .toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? "";
-  const encodedAttachment = attachment.content.toString("base64")
-    .match(/.{1,76}/g)?.join("\r\n") ?? "";
+  const encodedAttachments = allAttachments.map((item) => {
+    const safeFilename = item.filename.replace(/["\\\r\n]/g, "_");
+    const encoded = item.content.toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? "";
+    return [`Content-Type: ${item.mimeType}; name="${safeFilename}"`, `Content-Disposition: attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(item.filename)}`, "Content-Transfer-Encoding: base64", "", encoded].join("\r\n");
+  });
 
   const mimeMessage = [
     `From: ${safeHeader(from)}`,
@@ -37,12 +42,7 @@ export function createRawEmail({
     "Content-Transfer-Encoding: base64",
     "",
     encodedBody,
-    `--${boundary}`,
-    `Content-Type: ${attachment.mimeType}; name="${safeFilename}"`,
-    `Content-Disposition: attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
-    "Content-Transfer-Encoding: base64",
-    "",
-    encodedAttachment,
+    ...encodedAttachments.flatMap((item) => [`--${boundary}`, item]),
     `--${boundary}--`,
     "",
   ].join("\r\n");

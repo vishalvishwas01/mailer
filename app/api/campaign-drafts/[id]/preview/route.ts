@@ -15,6 +15,8 @@ const allowedPlaceholders = new Set([
   "email",
   "company",
   "website",
+  "role",
+  "sender_name",
 ]);
 
 function renderTemplate(
@@ -30,7 +32,7 @@ function renderTemplate(
         throw new Error(`Unsupported placeholder: ${match}`);
       }
 
-      return values[placeholder] ?? "";
+      return values[placeholder] ?? match;
     }
   );
 }

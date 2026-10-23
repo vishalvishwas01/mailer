@@ -225,7 +225,7 @@ function HomeContent() {
       ? "error"
       : "success";
   return (
-    <main className="min-h-screen bg-zinc-50 text-zinc-900">
+    <main className="min-h-[calc(100vh-57px)] bg-zinc-50 text-zinc-900">
       <div className="mx-auto max-w-5xl px-5 py-10 sm:px-8">
         <header className="mb-10 flex items-center justify-between">
           <div>

@@ -36,7 +36,8 @@ export async function getResumeBucket() {
 export async function saveResumeFile(
   buffer: Buffer,
   filename: string,
-  contentType: string
+  contentType: string,
+  purpose = "resume"
 ): Promise<ObjectId> {
   const bucket = await getResumeBucket();
 
@@ -44,7 +45,7 @@ export async function saveResumeFile(
     const uploadStream = bucket.openUploadStream(filename, {
       metadata: {
         contentType,
-        purpose: "resume",
+        purpose,
       },
     });
 

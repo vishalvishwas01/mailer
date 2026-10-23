@@ -7,6 +7,7 @@ import EmailSend from "@/models/EmailSend";
 import Contact from "@/models/Contact";
 import CampaignDraft from "@/models/CampaignDraft";
 import Resume from "@/models/Resume";
+import EmailTemplate from "@/models/EmailTemplate";
 import { readResumeFile } from "@/lib/gridfs";
 import { createRawEmail } from "@/lib/mime-email";
 
@@ -73,6 +74,10 @@ export async function POST(
       return NextResponse.json({ error: "The campaign resume is missing. Upload or select a resume before sending." }, { status: 409 });
     }
 
+    const template = campaign ? await EmailTemplate.findById(campaign.templateId).lean() : null;
+    const templateAttachment = template?.attachment;
+    const templateAttachmentBuffer = templateAttachment ? await readResumeFile(templateAttachment.fileId) : null;
+
     let resumeBuffer: Buffer;
     try {
       resumeBuffer = await readResumeFile(resume.fileId);
@@ -112,6 +117,7 @@ export async function POST(
           mimeType: resume.mimeType,
           content: resumeBuffer,
         },
+        ...(templateAttachment && templateAttachmentBuffer ? { attachments: [{ filename: templateAttachment.originalName, mimeType: templateAttachment.mimeType, content: templateAttachmentBuffer }] } : {}),
       });
 
       const response = await gmail.users.messages.send({

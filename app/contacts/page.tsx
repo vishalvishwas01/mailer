@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -29,7 +29,7 @@ const statusStyle: Record<string, string> = {
 function prettyStatus(value: string) { return ({ not_sent: "Did not send", reply_received: "Reply received", unknown: "Uncertain", sending: "Sending" } as Record<string,string>)[value] || value.charAt(0).toUpperCase() + value.slice(1); }
 function date(value?: string) { if (!value) return "—"; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleString(); }
 
-export default function ContactsPage() {
+function ContactsContent() {
   const searchParams = useSearchParams();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
@@ -86,7 +86,7 @@ export default function ContactsPage() {
   }
 
   return (
-    <main className="mx-auto min-h-[calc(100vh-70px)] w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main className="mx-auto min-h-[calc(100vh-57px)] w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
         <div><p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-600">Contact workspace</p><h1 className="mt-2 text-3xl font-bold tracking-tight">{view === "contacts" ? "Contacts & delivery status" : "Email queue"}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">{view === "contacts" ? "See who was contacted, which messages failed, which are queued, and who has replied — all in one place." : "Review scheduled emails and cancel items that have not started processing."}</p></div>
         <div className="flex flex-wrap gap-2"><button onClick={() => switchView("contacts")} className={"rounded-lg px-4 py-2.5 text-sm font-semibold " + (view === "contacts" ? "bg-indigo-600 text-white" : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50")}>Contacts</button><button onClick={() => switchView("queue")} className={"rounded-lg px-4 py-2.5 text-sm font-semibold " + (view === "queue" ? "bg-indigo-600 text-white" : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50")}>Queue</button><Link href="/contacts/import" className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700">Upload CSV</Link>{view === "contacts" && <button type="button" onClick={() => { setShowAddForm((open) => !open); setError(""); setNotice(""); }} className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">{showAddForm ? "Close form" : "Add manually"}</button>}<button onClick={() => void load(pagination.page, search, filter, view)} disabled={loading} className="rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-zinc-50 disabled:opacity-50">Refresh</button></div>
@@ -164,5 +164,13 @@ export default function ContactsPage() {
         </section>
       )}
     </main>
+  );
+}
+
+export default function ContactsPage() {
+  return (
+    <Suspense fallback={<main className="mx-auto min-h-[calc(100vh-57px)] w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8" aria-label="Loading contacts" />}>
+      <ContactsContent />
+    </Suspense>
   );
 }

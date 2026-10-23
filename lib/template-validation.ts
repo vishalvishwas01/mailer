@@ -6,6 +6,8 @@ const allowedPlaceholders = new Set([
   "email",
   "company",
   "website",
+  "role",
+  "sender_name",
 ]);
 
 const templateFields = {
@@ -30,7 +32,7 @@ function validatePlaceholders(
       ctx.addIssue({
         code: "custom",
         path: ["body"],
-        message: `Unsupported placeholder: {{${placeholder}}}. Use name, email, company, or website.`,
+        message: `Unsupported placeholder: {{${placeholder}}}. Use name, email, company, website, role, or sender_name.`,
       });
     }
   }
