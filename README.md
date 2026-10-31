@@ -29,10 +29,10 @@ Generate independent random secrets locally, for example with `node -e "console.
 
 ## Scheduled processing
 
-GitHub Actions runs the scheduled worker workflow in `.github/workflows/mailer-workers.yml` every 15 minutes (UTC; GitHub may delay scheduled starts). It also supports manual runs from the Actions tab.
+GitHub Actions runs the email worker every 5 minutes from 18:00–20:55 UTC (11:30 PM–2:25 AM IST), and polls for replies hourly. GitHub may delay scheduled starts. The workflow also supports manual runs from the Actions tab.
 
-- `/api/email-worker` every 15 minutes. Each run can process at most one queue item; the schedule window, interval, daily limit, approved-draft state, persistent reservation, and unique send records are checked before delivery.
-- `/api/replies/poll` every 15 minutes. It checks recent Gmail threads for replies and stores discovered messages.
+- `/api/email-worker` every 5 minutes during the configured IST window. Each run can process at most one queue item; the schedule window, interval, daily limit, approved-draft state, persistent reservation, and unique send records are checked before delivery.
+- `/api/replies/poll` hourly. It checks recent Gmail threads for replies and stores discovered messages.
 
 Add GitHub repository Actions secrets named `APP_URL` (your deployed origin, such as `https://your-app.vercel.app`, without a trailing slash) and `CRON_SECRET` (same value as the Vercel environment variable). The workflow calls the worker endpoints with `Authorization: Bearer <CRON_SECRET>`. The endpoints reject requests without the secret. Scheduled sending is disabled until you enable it in the schedule settings. Only queue drafts that have been reviewed and approved.
 

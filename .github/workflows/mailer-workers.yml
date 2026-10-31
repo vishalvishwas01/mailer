@@ -2,12 +2,15 @@ name: Mailer workers
 
 on:
   schedule:
-    # GitHub Actions scheduled workflows use UTC and may start a little late.
-    - cron: "*/5 * * * *"
+    # 11:30 PM–2:30 AM IST is 18:00–21:00 UTC; the end is exclusive.
+    - cron: "*/5 18-20 * * *"
+    # Reply checks are independent of the sending window; hourly keeps usage low.
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 jobs:
   email-worker:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 18-20 * * *'
     runs-on: ubuntu-latest
     steps:
       - name: Process one eligible queued email
@@ -22,6 +25,7 @@ jobs:
             "${APP_URL%/}/api/email-worker"
 
   reply-poller:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 * * * *'
     runs-on: ubuntu-latest
     steps:
       - name: Poll sent Gmail threads for replies
