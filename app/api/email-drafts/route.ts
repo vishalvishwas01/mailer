@@ -6,6 +6,7 @@ import { connectDB } from "@/lib/mongodb";
 import EmailDraft from "@/models/EmailDraft";
 import "@/models/Contact";
 import "@/models/CampaignDraft";
+import EmailQueueItem from "@/models/EmailQueueItem";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -50,8 +51,20 @@ export async function GET(request: Request) {
       EmailDraft.countDocuments(filter),
     ]);
 
+    const queueItems = drafts.length
+      ? await EmailQueueItem.find({ emailDraftId: { $in: drafts.map((draft) => draft._id) } })
+          .select("emailDraftId status")
+          .lean()
+      : [];
+    const queueStatusByDraftId = new Map(
+      queueItems.map((item) => [item.emailDraftId.toString(), item.status])
+    );
+
     return NextResponse.json({
-      drafts,
+      drafts: drafts.map((draft) => ({
+        ...draft,
+        queueStatus: queueStatusByDraftId.get(draft._id.toString()) ?? null,
+      })),
       pagination: {
         page,
         limit,

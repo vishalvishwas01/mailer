@@ -19,6 +19,7 @@ type EmailDraftItem = {
   subject: string;
   body: string;
   status: "pending_review" | "approved" | "rejected";
+  queueStatus?: "queued" | "processing" | "sent" | "failed" | "unknown" | "cancelled" | null;
   contactId: ContactInfo | string;
   campaignDraftId: CampaignInfo | string;
   createdAt: string;
@@ -50,15 +51,17 @@ export default function EmailDraftsPage() {
   const [filter, setFilter] = useState<FilterStatus>("pending_review");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
+  const [bulkQueueing, setBulkQueueing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const loadDrafts = useCallback(async () => {
     try {
-      const query =
-        filter === "all" ? "" : `?status=${encodeURIComponent(filter)}`;
+      const params = new URLSearchParams({ limit: "100" });
+      if (filter !== "all") params.set("status", filter);
 
-      const response = await fetch(`/api/email-drafts${query}`, {
+      const response = await fetch(`/api/email-drafts?${params.toString()}`, {
         cache: "no-store",
       });
 
@@ -172,11 +175,55 @@ export default function EmailDraftsPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not queue this email.");
       setNotice(`Email queued for ${contact.email || "the recipient"}.`);
+      await loadDrafts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not queue this email.");
     } finally {
       setBusyId(null);
     }
+  }
+
+  async function queueSelectedEmails() {
+    const ids = selectedDraftIds.filter((id) => {
+      const draft = drafts.find((item) => item._id === id);
+      return draft?.status === "approved" && !draft.queueStatus;
+    });
+    if (!ids.length || bulkQueueing) return;
+    if (!window.confirm(`Queue ${ids.length} approved email${ids.length === 1 ? "" : "s"} for scheduled delivery? They will send only when your configured schedule allows.`)) return;
+
+    setBulkQueueing(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/email-queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailDraftIds: ids }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not queue the selected emails.");
+      const queuedCount = Number(data.queuedCount) || 0;
+      const failedCount = Array.isArray(data.results)
+        ? data.results.filter((item: { status?: string }) => item.status === "failed").length
+        : 0;
+      const skippedCount = Array.isArray(data.results)
+        ? data.results.filter((item: { status?: string }) => item.status === "skipped" || item.status === "already_queued").length
+        : 0;
+      setNotice(`${queuedCount} email${queuedCount === 1 ? "" : "s"} queued${skippedCount ? `; ${skippedCount} already queued or skipped` : ""}.`);
+      if (failedCount) setError(`${failedCount} selected email${failedCount === 1 ? "" : "s"} could not be queued. Refresh to check their status, then retry if needed.`);
+      setSelectedDraftIds([]);
+      await loadDrafts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not queue the selected emails.");
+    } finally {
+      setBulkQueueing(false);
+    }
+  }
+
+  function toggleSelectedDraft(draftId: string) {
+    setSelectedDraftIds((selected) => selected.includes(draftId)
+      ? selected.filter((id) => id !== draftId)
+      : [...selected, draftId]);
   }
 
   async function sendEmail(draft: EmailDraftItem) {
@@ -247,7 +294,7 @@ export default function EmailDraftsPage() {
           <button
             key={value}
             type="button"
-            onClick={() => setFilter(value)}
+            onClick={() => { setFilter(value); setSelectedDraftIds([]); }}
             className={`rounded-full px-4 py-2 text-sm font-medium ${
               filter === value
                 ? "bg-black text-white"
@@ -290,9 +337,35 @@ export default function EmailDraftsPage() {
         </div>
       ) : (
         <div className="space-y-5">
+          {drafts.some((draft) => draft.status === "approved") && (() => {
+            const queueable = drafts.filter((draft) => draft.status === "approved" && !draft.queueStatus);
+            const selectedCount = selectedDraftIds.filter((id) => queueable.some((draft) => draft._id === id)).length;
+            return (
+              <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-indigo-950">
+                  <input
+                    type="checkbox"
+                    checked={queueable.length > 0 && selectedCount === queueable.length}
+                    disabled={bulkQueueing || queueable.length === 0}
+                    onChange={(event) => setSelectedDraftIds(event.target.checked ? queueable.map((draft) => draft._id) : [])}
+                    className="h-4 w-4 rounded border-zinc-300"
+                  />
+                  Select all queueable approved drafts on this page ({queueable.length})
+                </label>
+                <button
+                  type="button"
+                  disabled={bulkQueueing || selectedCount === 0}
+                  onClick={() => void queueSelectedEmails()}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {bulkQueueing ? "Queueing selected…" : `Queue selected (${selectedCount})`}
+                </button>
+              </section>
+            );
+          })()}
           {drafts.map((draft) => {
             const contact = getContact(draft);
-            const isBusy = busyId === draft._id;
+            const isBusy = busyId === draft._id || bulkQueueing;
 
             return (
               <article
@@ -302,6 +375,12 @@ export default function EmailDraftsPage() {
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
+                    {draft.status === "approved" && !draft.queueStatus && (
+                      <label className="mb-2 inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-indigo-700">
+                        <input type="checkbox" checked={selectedDraftIds.includes(draft._id)} disabled={bulkQueueing} onChange={() => toggleSelectedDraft(draft._id)} className="h-4 w-4 rounded border-zinc-300" />
+                        Select for queue
+                      </label>
+                    )}
                     <p className="text-sm text-gray-500">
                       {contact.name || "Contact"}
                       {contact.company ? ` · ${contact.company}` : ""}
@@ -315,7 +394,7 @@ export default function EmailDraftsPage() {
                   </div>
 
                   <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium">
-                    {draft.status.replace("_", " ")}
+                    {draft.queueStatus ? draft.queueStatus.replace("_", " ") : draft.status.replace("_", " ")}
                   </span>
                 </div>
 
@@ -370,11 +449,11 @@ export default function EmailDraftsPage() {
                     <>
                       <button
                         type="button"
-                        disabled={isBusy || !contact.email}
+                        disabled={isBusy || !contact.email || Boolean(draft.queueStatus)}
                         onClick={() => void queueEmail(draft)}
-                        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                        className={`rounded-lg px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${draft.queueStatus ? "bg-emerald-700" : "bg-indigo-600"}`}
                       >
-                        {isBusy ? "Processing..." : "Queue for schedule"}
+                        {isBusy ? "Processing..." : draft.queueStatus === "queued" ? "Queued" : draft.queueStatus ? `Queue ${draft.queueStatus}` : "Queue for schedule"}
                       </button>
                       <button
                         type="button"
