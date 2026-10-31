@@ -5,12 +5,7 @@ export interface IEmailTemplate {
   name: string;
   subject: string;
   body: string;
-  attachment?: {
-    originalName: string;
-    mimeType: string;
-    size: number;
-    fileId: mongoose.Types.ObjectId;
-  } | null;
+  resumeLink?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,11 +33,11 @@ const EmailTemplateSchema = new Schema<IEmailTemplate>(
       minlength: 1,
       maxlength: 20000,
     },
-    attachment: {
-      originalName: { type: String, trim: true, maxlength: 255 },
-      mimeType: { type: String, enum: ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"] },
-      size: { type: Number, min: 1, max: 5 * 1024 * 1024 },
-      fileId: { type: Schema.Types.ObjectId },
+    resumeLink: {
+      type: String,
+      trim: true,
+      maxlength: 2048,
+      default: "",
     },
   },
   {
@@ -50,11 +45,16 @@ const EmailTemplateSchema = new Schema<IEmailTemplate>(
   }
 );
 
+// During Next.js development, Mongoose keeps compiled models across hot
+// reloads. Recompile this model if it predates the resumeLink field, otherwise
+// strict mode silently drops resumeLink updates from template saves.
+const cachedEmailTemplate = mongoose.models.EmailTemplate as Model<IEmailTemplate> | undefined;
+if (cachedEmailTemplate && !cachedEmailTemplate.schema.path("resumeLink")) {
+  mongoose.deleteModel("EmailTemplate");
+}
+
 const EmailTemplate: Model<IEmailTemplate> =
   (mongoose.models.EmailTemplate as Model<IEmailTemplate>) ||
-  mongoose.model<IEmailTemplate>(
-    "EmailTemplate",
-    EmailTemplateSchema
-  );
+  mongoose.model<IEmailTemplate>("EmailTemplate", EmailTemplateSchema);
 
 export default EmailTemplate;

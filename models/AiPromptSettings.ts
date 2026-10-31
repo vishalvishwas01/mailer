@@ -5,6 +5,7 @@ export const DEFAULT_EMAIL_INSTRUCTIONS = "You write concise, professional outre
 export interface IAiPromptSettings {
   key: string;
   emailInstructions: string;
+  aiProvider: "gemini" | "openai";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -18,6 +19,12 @@ const AiPromptSettingsSchema = new Schema<IAiPromptSettings>(
       minlength: 1,
       maxlength: 20000,
       default: DEFAULT_EMAIL_INSTRUCTIONS,
+    },
+    aiProvider: {
+      type: String,
+      enum: ["gemini", "openai"],
+      required: true,
+      default: "gemini",
     },
   },
   { timestamps: true }

@@ -8,6 +8,7 @@ import LogoutButton from "@/components/LogoutButton";
 const links = [
   { href: "/", label: "Overview" },
   { href: "/contacts", label: "Contacts" },
+  { href: "/campaigns", label: "Campaigns" },
   { href: "/email-drafts", label: "Email drafts" },
   { href: "/contacts?view=queue", label: "Queue" },
   { href: "/email-sends", label: "Send history" },

@@ -34,3 +34,23 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return GET(request);
 }
+
+// Interactive, authenticated one-shot worker for local development. This is
+// deliberately unavailable in production; production uses the cron secret.
+export async function PUT(request: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Manual worker runs are disabled in production." }, { status: 404 });
+  }
+
+  if (request.headers.get("x-mailer-confirm-send") !== "yes") {
+    return NextResponse.json({ error: "Explicit send confirmation is required." }, { status: 400 });
+  }
+
+  try {
+    const result = await runEmailWorker();
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("Manual local email worker run failed:", error);
+    return NextResponse.json({ error: "Email worker run failed." }, { status: 500 });
+  }
+}

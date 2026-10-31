@@ -1,6 +1,6 @@
 # Mailer
 
-Private single-user email outreach workspace built with Next.js, TypeScript, MongoDB/Mongoose, OpenAI, and Gmail OAuth.
+Private single-user email outreach workspace built with Next.js, TypeScript, MongoDB/Mongoose, Gemini or OpenAI, and Gmail OAuth.
 
 ## Local setup
 
@@ -14,7 +14,11 @@ Private single-user email outreach workspace built with Next.js, TypeScript, Mon
 ## Environment variables
 
 - `MONGODB_URI`: MongoDB connection string.
-- `OPENAI_API_KEY`: server-side OpenAI key for generating drafts.
+- `AI_PROVIDER`: draft generation provider, `gemini` (default) or `openai`.
+- `GEMINI_API_KEY`: server-side Gemini API key. Used by default.
+- `GEMINI_MODEL`: Gemini model name (defaults to `gemini-2.5-flash-lite`).
+- `OPENAI_API_KEY`: server-side OpenAI key for generating drafts when `AI_PROVIDER=openai`.
+- `OPENAI_MODEL`: OpenAI model name (defaults to `gpt-4.1-mini`).
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: Google OAuth configuration.
 - `GOOGLE_TOKEN_ENCRYPTION_KEY`: 32-byte hex key used to encrypt OAuth tokens at rest.
 - `APP_PASSWORD`: single-user application login password.
@@ -45,4 +49,4 @@ The scheduler uses the logical sending window as the daily limit period, includi
 
 ## AI instructions and email templates
 
-Open **AI & Templates** from the dashboard to edit the OpenAI system instructions and manage email templates. Both are stored in MongoDB. The system instructions are initialized with the application's default prompt the first time settings are opened; subsequent edits are used for future generated drafts. Existing drafts are not rewritten. Templates can be created and edited on the same page, and support `{{name}}`, `{{email}}`, `{{company}}`, and `{{website}}` placeholders.
+Open **AI & Templates** from the dashboard to edit the AI system instructions and manage email templates. The provider defaults to Gemini and can be changed by setting `AI_PROVIDER=gemini` or `AI_PROVIDER=openai` in `.env.local`; restart the server after changing environment variables. Provider keys and model names are configured with `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. Instructions are stored in MongoDB and apply to future drafts. Existing drafts are not rewritten.

@@ -22,7 +22,7 @@ export async function GET() {
 
     const drafts = await CampaignDraft.find()
       .populate("resumeId", "originalName mimeType size")
-      .populate("templateId", "name subject body")
+      .populate("templateId", "name subject body resumeLink")
       .sort({ updatedAt: -1 })
       .lean();
 
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
 
     const populatedDraft = await CampaignDraft.findById(draft._id)
       .populate("resumeId", "originalName mimeType size")
-      .populate("templateId", "name subject body")
+      .populate("templateId", "name subject body resumeLink")
       .lean();
 
     return NextResponse.json(

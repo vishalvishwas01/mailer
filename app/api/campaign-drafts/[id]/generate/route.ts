@@ -5,11 +5,13 @@ import { z } from "zod";
 
 import { connectDB } from "@/lib/mongodb";
 import { extractResumeText } from "@/lib/resume-text";
-import openai from "@/lib/openai";
+import { getAiClient, getAiModel, getAiProvider } from "@/lib/openai";
 import CampaignDraft from "@/models/CampaignDraft";
 import Contact from "@/models/Contact";
 import EmailTemplate from "@/models/EmailTemplate";
 import EmailDraft from "@/models/EmailDraft";
+import EmailQueueItem from "@/models/EmailQueueItem";
+import EmailSend from "@/models/EmailSend";
 import AiPromptSettings, { DEFAULT_EMAIL_INSTRUCTIONS } from "@/models/AiPromptSettings";
 import MailerSettings from "@/models/MailerSettings";
 import GmailAccount from "@/models/GmailAccount";
@@ -22,6 +24,9 @@ const requestSchema = z.object({
   contactId: z.string().refine(mongoose.isValidObjectId, {
     message: "Invalid contact ID.",
   }),
+  regenerateDraftId: z.string().refine(mongoose.isValidObjectId, {
+    message: "Invalid draft ID.",
+  }).optional(),
 });
 
 const generatedEmailSchema = z.object({
@@ -36,6 +41,7 @@ const allowedPlaceholders = new Set([
   "website",
   "role",
   "sender_name",
+  "resume_link",
 ]);
 
 function renderTemplate(
@@ -98,7 +104,7 @@ export async function POST(
       );
     }
 
-    const { contactId } = parsedRequest.data;
+    const { contactId, regenerateDraftId } = parsedRequest.data;
 
     const campaign = await CampaignDraft.findById(id).lean();
 
@@ -136,7 +142,21 @@ export async function POST(
       contactId: contact._id,
     }).lean();
 
-    if (existingDraft) {
+    if (regenerateDraftId) {
+      if (!existingDraft || existingDraft._id.toString() !== regenerateDraftId) {
+        return NextResponse.json({ error: "The draft to regenerate was not found for this contact." }, { status: 404 });
+      }
+      if (!["rejected", "pending_review"].includes(existingDraft.status)) {
+        return NextResponse.json({ error: "Only rejected or pending-review drafts can be regenerated." }, { status: 409 });
+      }
+      const [sent, queued] = await Promise.all([
+        EmailSend.exists({ emailDraftId: existingDraft._id }),
+        EmailQueueItem.exists({ emailDraftId: existingDraft._id, status: { $in: ["queued", "processing", "sent"] } }),
+      ]);
+      if (sent || queued) {
+        return NextResponse.json({ error: "This draft has already been queued or sent and cannot be regenerated." }, { status: 409 });
+      }
+    } else if (existingDraft) {
       return NextResponse.json(
         {
           error:
@@ -154,6 +174,7 @@ export async function POST(
       company: contact.company ?? "",
       website: contact.website ?? "",
       role: "{{role}}",
+      resume_link: template.resumeLink ?? "",
     };
 
     const mailerSettings = await MailerSettings.findOne({ key: "default" }).lean();
@@ -207,24 +228,21 @@ export async function POST(
       );
     }
 
-    const modelName =
-      process.env.OPENAI_MODEL || "gpt-4.1-mini";
-
     const promptSettings = await AiPromptSettings.findOneAndUpdate(
       { key: "default" },
-      { $setOnInsert: { key: "default", emailInstructions: DEFAULT_EMAIL_INSTRUCTIONS } },
+      { $setOnInsert: { key: "default", emailInstructions: DEFAULT_EMAIL_INSTRUCTIONS, aiProvider: getAiProvider() } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     ).lean();
     const emailInstructions =
       promptSettings.emailInstructions.trim() || DEFAULT_EMAIL_INSTRUCTIONS;
+    const provider = promptSettings.aiProvider || getAiProvider();
+    const modelName = getAiModel(provider);
+    const aiClient = getAiClient(provider);
 
     let generated: z.infer<typeof generatedEmailSchema>;
 
     try {
-      const response = await openai.responses.create({
-        model: modelName,
-        instructions: emailInstructions,
-        input: JSON.stringify({
+      const input = JSON.stringify({
           contact: {
             name: contact.name ?? "",
             email: contact.email,
@@ -239,20 +257,27 @@ export async function POST(
             subject: templateSubject,
             body: templateBody,
           },
-        }),
-        text: {
-          format: { type: "json_object" },
-        },
-        max_output_tokens: 1000,
-      });
+        });
+      const outputText = provider === "gemini"
+        ? (await aiClient.chat.completions.create({
+            model: modelName,
+            messages: [
+              { role: "system", content: emailInstructions },
+              { role: "user", content: input },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 1000,
+          })).choices[0]?.message?.content
+        : (await aiClient.responses.create({
+            model: modelName,
+            instructions: emailInstructions,
+            input,
+            text: { format: { type: "json_object" } },
+            max_output_tokens: 1000,
+          })).output_text;
+      if (!outputText || typeof outputText !== "string") throw new Error(`${provider} returned an empty response.`);
 
-      if (!response.output_text) {
-        throw new Error("OpenAI returned an empty response.");
-      }
-
-      const parsedOutput: unknown = JSON.parse(
-        response.output_text
-      );
+      const parsedOutput: unknown = JSON.parse(outputText);
 
       generated = generatedEmailSchema.parse(parsedOutput);
     } catch {
@@ -265,18 +290,28 @@ export async function POST(
       );
     }
 
-    const savedDraft = await EmailDraft.create({
-      campaignDraftId: campaign._id,
-      contactId: contact._id,
-      subject: generated.subject,
-      body: generated.body,
-      status: "pending_review",
-      modelName,
-    });
+    const savedDraft = existingDraft && regenerateDraftId
+      ? await EmailDraft.findOneAndUpdate(
+          { _id: existingDraft._id, status: { $in: ["rejected", "pending_review"] } },
+          { $set: { subject: generated.subject, body: generated.body, status: "pending_review", modelName } },
+          { new: true, runValidators: true },
+        )
+      : await EmailDraft.create({
+          campaignDraftId: campaign._id,
+          contactId: contact._id,
+          subject: generated.subject,
+          body: generated.body,
+          status: "pending_review",
+          modelName,
+        });
+
+    if (!savedDraft) {
+      return NextResponse.json({ error: "This draft changed while it was being regenerated. Refresh and try again." }, { status: 409 });
+    }
 
     return NextResponse.json(
       {
-        message: "Email draft generated and saved for review.",
+        message: regenerateDraftId ? "Email draft regenerated and saved for review." : "Email draft generated and saved for review.",
         draft: {
           id: savedDraft._id,
           campaignDraftId: savedDraft.campaignDraftId,

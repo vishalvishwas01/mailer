@@ -7,11 +7,11 @@ type Template = {
   name: string;
   subject: string;
   body: string;
+  resumeLink?: string;
   updatedAt?: string;
-  attachment?: { originalName: string; mimeType: string; size: number } | null;
 };
 
-const emptyTemplate: Pick<Template, "name" | "subject" | "body"> & { attachment?: Template["attachment"] } = { name: "", subject: "", body: "", attachment: null };
+const emptyTemplate: Pick<Template, "name" | "subject" | "body" | "resumeLink"> = { name: "", subject: "", body: "", resumeLink: "" };
 
 export default function SettingsPage() {
   const [instructions, setInstructions] = useState("");
@@ -22,7 +22,6 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
 
   const notify = (text: string, isError = false) => {
     setMessage(text);
@@ -46,7 +45,7 @@ export default function SettingsPage() {
         setTemplates(items);
         if (items.length) {
           setSelectedId(items[0]._id);
-          setTemplate({ name: items[0].name, subject: items[0].subject, body: items[0].body, attachment: items[0].attachment });
+          setTemplate({ name: items[0].name, subject: items[0].subject, body: items[0].body, resumeLink: items[0].resumeLink ?? "" });
         }
       } catch (e) {
         if (!cancelled) notify(e instanceof Error ? e.message : "Unable to load settings.", true);
@@ -61,8 +60,7 @@ export default function SettingsPage() {
   function chooseTemplate(id: string) {
     setSelectedId(id);
     const found = templates.find((item) => item._id === id);
-    setTemplate(found ? { name: found.name, subject: found.subject, body: found.body, attachment: found.attachment } : emptyTemplate);
-    setAttachmentFile(null);
+    setTemplate(found ? { name: found.name, subject: found.subject, body: found.body, resumeLink: found.resumeLink ?? "" } : emptyTemplate);
     notify("");
   }
 
@@ -89,18 +87,11 @@ export default function SettingsPage() {
       const response = await fetch(isExisting ? `/api/templates/${selectedId}` : "/api/templates", {
         method: isExisting ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: template.name, subject: template.subject, body: template.body }),
+        body: JSON.stringify({ name: template.name, subject: template.subject, body: template.body, resumeLink: template.resumeLink ?? "" }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not save template.");
       const saved: Template = data.template;
-      if (attachmentFile) {
-        const form = new FormData();
-        form.append("attachment", attachmentFile);
-        const upload = await fetch(`/api/templates/${saved._id}/attachment`, { method: "POST", body: form });
-        const uploadData = await upload.json();
-        if (!upload.ok) throw new Error(uploadData.error ?? "Template saved, but attachment upload failed.");
-      }
       const items = await (async () => {
         const r = await fetch("/api/templates", { cache: "no-store" });
         const d = await r.json();
@@ -109,8 +100,8 @@ export default function SettingsPage() {
       })();
       setTemplates(items);
       setSelectedId(saved._id);
-      setTemplate({ name: saved.name, subject: saved.subject, body: saved.body, attachment: saved.attachment });
-      setAttachmentFile(null);
+      const refreshed = items.find((item) => item._id === saved._id) ?? saved;
+      setTemplate({ name: refreshed.name, subject: refreshed.subject, body: refreshed.body, resumeLink: refreshed.resumeLink ?? "" });
       notify(isExisting ? "Template updated." : "Template created.");
     } catch (e) {
       notify(e instanceof Error ? e.message : "Could not save template.", true);
@@ -145,7 +136,7 @@ export default function SettingsPage() {
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <div className="mb-5">
             <h2 className="text-xl font-semibold">Email templates</h2>
-            <p className="mt-1 text-sm text-zinc-500">Edit the subject and body used as the starting point for personalized emails.</p>
+            <p className="mt-1 text-sm text-zinc-500">Edit the subject, body, and optional resume link used for personalized emails.</p>
           </div>
           <div className="mb-5 flex flex-wrap gap-3">
             <select value={selectedId} onChange={(e) => chooseTemplate(e.target.value)} className="min-w-64 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm">
@@ -161,15 +152,14 @@ export default function SettingsPage() {
             <label className="block text-sm font-medium">Email subject
               <input value={template.subject} onChange={(e) => setTemplate({ ...template, subject: e.target.value })} maxLength={200} className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3 py-2.5 font-normal outline-none focus:border-indigo-500" placeholder="Quick introduction, {{name}}" />
             </label>
+            <label className="block text-sm font-medium">Resume PDF link (optional)
+              <input type="url" value={template.resumeLink ?? ""} onChange={(e) => setTemplate({ ...template, resumeLink: e.target.value })} maxLength={2048} className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3 py-2.5 font-normal outline-none focus:border-indigo-500" placeholder="https://example.com/my-resume.pdf" />
+              <span className="mt-1 block text-xs font-normal text-zinc-500">Paste a shareable link. Include <code>{"{{resume_link}}"}</code> in the email body to insert it. The campaign resume remains available to AI for personalization but is never sent as an attachment.</span>
+            </label>
             <label className="block text-sm font-medium">Email body / template
               <textarea value={template.body} onChange={(e) => setTemplate({ ...template, body: e.target.value })} rows={12} maxLength={20000} className="mt-1.5 w-full rounded-xl border border-zinc-300 p-4 font-mono text-sm leading-6 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder={"Hi {{name}},\n\nI wanted to reach out about…"} />
             </label>
-            <label className="block text-sm font-medium">PDF/DOCX attachment
-              <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} className="mt-1.5 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm" />
-              <span className="mt-1 block text-xs font-normal text-zinc-500">Optional, up to 5 MB. It will be attached to every email generated from this template.</span>
-              {template.attachment && !attachmentFile && <span className="mt-1 block text-xs font-medium text-indigo-700">Current: {template.attachment.originalName}</span>}
-            </label>
-            <p className="text-xs leading-5 text-zinc-500">Supported placeholders: <code>{"{{name}}"}</code>, <code>{"{{email}}"}</code>, <code>{"{{company}}"}</code>, <code>{"{{website}}"}</code>, <code>{"{{role}}"}</code>, <code>{"{{sender_name}}"}</code>. Role is inferred during AI generation; sender name is derived from the active Gmail address.</p>
+            <p className="text-xs leading-5 text-zinc-500">Supported placeholders: <code>{"{{name}}"}</code>, <code>{"{{email}}"}</code>, <code>{"{{company}}"}</code>, <code>{"{{website}}"}</code>, <code>{"{{role}}"}</code>, <code>{"{{sender_name}}"}</code>, <code>{"{{resume_link}}"}</code>. Role is inferred during AI generation; sender name is derived from the active Gmail address.</p>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs text-zinc-500">{template.body.length}/20,000 body characters</span>
               <button disabled={busy || !template.name.trim() || !template.subject.trim() || !template.body.trim()} onClick={saveTemplate} className="rounded-lg bg-black px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50">{busy ? "Saving…" : selectedId ? "Save template" : "Create template"}</button>

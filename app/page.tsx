@@ -15,6 +15,8 @@ type ApiError = {
   error?: string;
 };
 
+type AiProvider = "gemini" | "openai";
+
 function HomeContent() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -26,6 +28,10 @@ function HomeContent() {
   const [messageType, setMessageType] = useState<"success" | "error">(
     "success",
   );
+  const [aiProvider, setAiProvider] = useState<AiProvider>("gemini");
+  const [aiProviderLoading, setAiProviderLoading] = useState(true);
+  const [aiProviderBusy, setAiProviderBusy] = useState(false);
+  const [aiProviderMessage, setAiProviderMessage] = useState("");
 
   const searchParams = useSearchParams();
 
@@ -120,6 +126,24 @@ function HomeContent() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAiProvider() {
+      try {
+        const response = await fetch("/api/ai-instructions", { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Unable to load AI provider.");
+        if (!cancelled) setAiProvider(data.aiProvider === "openai" ? "openai" : "gemini");
+      } catch (error) {
+        if (!cancelled) setAiProviderMessage(error instanceof Error ? error.message : "Unable to load AI provider.");
+      } finally {
+        if (!cancelled) setAiProviderLoading(false);
+      }
+    }
+    void loadAiProvider();
+    return () => { cancelled = true; };
+  }, []);
+
   async function configureGmail() {
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -139,6 +163,27 @@ function HomeContent() {
     router.push(
       `/api/auth/google/connect?email=${encodeURIComponent(normalizedEmail)}`,
     );
+  }
+
+  async function selectAiProvider(provider: AiProvider) {
+    if (provider === aiProvider || aiProviderBusy) return;
+    setAiProviderBusy(true);
+    setAiProviderMessage("");
+    try {
+      const response = await fetch("/api/ai-instructions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aiProvider: provider }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Could not update AI provider.");
+      setAiProvider(data.aiProvider === "openai" ? "openai" : "gemini");
+      setAiProviderMessage(`${provider === "gemini" ? "Gemini" : "OpenAI"} selected for new email drafts.`);
+    } catch (error) {
+      setAiProviderMessage(error instanceof Error ? error.message : "Could not update AI provider.");
+    } finally {
+      setAiProviderBusy(false);
+    }
   }
 
   async function selectActiveAccount(accountId: string) {
@@ -258,6 +303,41 @@ function HomeContent() {
             {visibleMessage}
           </div>
         )}
+
+        <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-5">
+            <p className="text-sm font-medium text-indigo-600">AI provider</p>
+            <h2 className="mt-2 text-xl font-semibold">Choose your draft model</h2>
+            <p className="mt-2 text-sm text-zinc-500">This selection applies to new email drafts. Gemini is the default.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {([
+              ["gemini", "Google Gemini", "Gemini 2.5 Flash-Lite · free tier available"],
+              ["openai", "OpenAI", "Uses the OpenAI model configured for this app"],
+            ] as [AiProvider, string, string][]).map(([provider, label, description]) => {
+              const selected = aiProvider === provider;
+              return (
+                <button
+                  key={provider}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  disabled={aiProviderLoading || aiProviderBusy}
+                  onClick={() => void selectAiProvider(provider)}
+                  className={`rounded-xl border p-4 text-left transition ${selected ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-100" : "border-zinc-200 hover:border-zinc-400 hover:bg-zinc-50"} disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="font-semibold">{label}</span>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${selected ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-600"}`}>{selected ? "Selected" : "Select"}</span>
+                  </span>
+                  <span className="mt-2 block text-sm text-zinc-500">{description}</span>
+                </button>
+              );
+            })}
+          </div>
+          {aiProviderLoading && <p className="mt-3 text-xs text-zinc-500">Loading provider…</p>}
+          {aiProviderMessage && <p role="status" className="mt-3 text-sm text-zinc-600">{aiProviderMessage}</p>}
+        </section>
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-6">

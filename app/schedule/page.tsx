@@ -1,7 +1,6 @@
 
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type ScheduleSettings = {
@@ -27,6 +26,8 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [workerBusy, setWorkerBusy] = useState(false);
+  const [workerResult, setWorkerResult] = useState("");
 
   useEffect(() => {
     async function loadSettings() {
@@ -104,6 +105,28 @@ export default function SchedulePage() {
     }
   }
 
+  async function runLocalWorker() {
+    const confirmed = window.confirm("This runs the delivery worker once. If a queued email is eligible, it may send a real email immediately. Continue?");
+    if (!confirmed) return;
+    setWorkerBusy(true);
+    setWorkerResult("");
+    try {
+      const response = await fetch("/api/email-worker", {
+        method: "PUT",
+        headers: { "x-mailer-confirm-send": "yes" },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Could not run the worker.");
+      setWorkerResult(data.processed
+        ? `Worker processed an item (${data.status ?? "complete"}). ${data.reason ?? ""}`
+        : `Worker did not send anything: ${data.reason ?? "No eligible work."}`);
+    } catch (error) {
+      setWorkerResult(error instanceof Error ? error.message : "Could not run the worker.");
+    } finally {
+      setWorkerBusy(false);
+    }
+  }
+
   if (loading) {
     return <main className="min-h-[calc(100vh-70px)] bg-zinc-50 px-4 py-8 text-zinc-900 sm:px-6"><div className="mx-auto max-w-2xl">Loading schedule settings...</div></main>;
   }
@@ -118,8 +141,15 @@ export default function SchedulePage() {
       </header>
 
       <div className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-        When enabled in a deployment with CRON_SECRET configured, approved items in the queue can send real emails automatically during this window. Keep this disabled until your credentials and test recipient are verified.
+        In production, the Vercel cron checks the queue every minute. Local development does not run that cron automatically. Any worker run can send a real email, so verify each recipient before proceeding.
       </div>
+
+      {process.env.NODE_ENV !== "production" && <section className="mt-5 rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+        <h2 className="font-semibold">Local queue test</h2>
+        <p className="mt-1 text-sm text-zinc-600">Manually run the delivery worker once. It will only process an item if the schedule window, interval, daily limit, and queue status allow it.</p>
+        <button type="button" onClick={() => void runLocalWorker()} disabled={workerBusy} className="mt-4 rounded-lg bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50">{workerBusy ? "Running worker…" : "Run local worker once"}</button>
+        {workerResult && <p role="status" className="mt-3 whitespace-pre-wrap text-sm text-zinc-700">{workerResult}</p>}
+      </section>}
 
       <form onSubmit={saveSettings} className="space-y-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
         <label className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">

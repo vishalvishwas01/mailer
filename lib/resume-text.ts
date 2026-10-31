@@ -1,7 +1,11 @@
 
 import "server-only";
 import mongoose from "mongoose";
-import pdf from "pdf-parse";
+// Import the parser implementation directly: pdf-parse's package entrypoint
+// runs a bundled sample-PDF self-test in some server bundles (which fails when
+// its test fixture is not present in the application deployment).
+// @ts-expect-error The package does not publish declarations for its direct implementation path.
+import pdf from "pdf-parse/lib/pdf-parse.js";
 import mammoth from "mammoth";
 
 import Resume from "@/models/Resume";

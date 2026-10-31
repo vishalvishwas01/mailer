@@ -5,10 +5,6 @@ import { getAuthenticatedGmailClient } from "@/lib/gmail-client";
 import EmailDraft from "@/models/EmailDraft";
 import EmailSend from "@/models/EmailSend";
 import Contact from "@/models/Contact";
-import CampaignDraft from "@/models/CampaignDraft";
-import Resume from "@/models/Resume";
-import EmailTemplate from "@/models/EmailTemplate";
-import { readResumeFile } from "@/lib/gridfs";
 import { createRawEmail } from "@/lib/mime-email";
 
 type RouteContext = {
@@ -68,27 +64,6 @@ export async function POST(
       );
     }
 
-    const campaign = await CampaignDraft.findById(emailDraft.campaignDraftId).lean();
-    const resume = campaign ? await Resume.findById(campaign.resumeId).lean() : null;
-    if (!resume) {
-      return NextResponse.json({ error: "The campaign resume is missing. Upload or select a resume before sending." }, { status: 409 });
-    }
-
-    const template = campaign ? await EmailTemplate.findById(campaign.templateId).lean() : null;
-    const templateAttachment = template?.attachment;
-    const templateAttachmentBuffer = templateAttachment ? await readResumeFile(templateAttachment.fileId) : null;
-
-    let resumeBuffer: Buffer;
-    try {
-      resumeBuffer = await readResumeFile(resume.fileId);
-      if (!resumeBuffer.length || resumeBuffer.length > 5 * 1024 * 1024) {
-        throw new Error("Resume attachment is empty or exceeds 5 MB.");
-      }
-    } catch (error) {
-      console.error("Unable to load resume for manual email:", error);
-      return NextResponse.json({ error: "Unable to read the campaign resume. Email was not sent." }, { status: 500 });
-    }
-
     const { gmail, account } = await getAuthenticatedGmailClient();
 
     // Create the record before contacting Gmail. Unique indexes
@@ -112,12 +87,6 @@ export async function POST(
         to: contact.email,
         subject: emailDraft.subject,
         body: emailDraft.body,
-        attachment: {
-          filename: resume.originalName,
-          mimeType: resume.mimeType,
-          content: resumeBuffer,
-        },
-        ...(templateAttachment && templateAttachmentBuffer ? { attachments: [{ filename: templateAttachment.originalName, mimeType: templateAttachment.mimeType, content: templateAttachmentBuffer }] } : {}),
       });
 
       const response = await gmail.users.messages.send({

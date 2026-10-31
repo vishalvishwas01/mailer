@@ -17,6 +17,7 @@ const allowedPlaceholders = new Set([
   "website",
   "role",
   "sender_name",
+  "resume_link",
 ]);
 
 function renderTemplate(
@@ -78,7 +79,7 @@ export async function POST(
     }
 
     const draft = await CampaignDraft.findById(id)
-      .populate("templateId", "name subject body")
+    .populate("templateId", "name subject body resumeLink")
       .lean();
 
     if (!draft) {
@@ -103,6 +104,7 @@ export async function POST(
       name: string;
       subject: string;
       body: string;
+      resumeLink?: string;
     } | null;
 
     if (!template) {
@@ -117,6 +119,7 @@ export async function POST(
       email: contact.email ?? "",
       company: contact.company ?? "",
       website: contact.website ?? "",
+      resume_link: template.resumeLink ?? "",
     };
 
     const subject = renderTemplate(template.subject, values);

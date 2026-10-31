@@ -27,7 +27,7 @@ export async function GET(
 
     const draft = await CampaignDraft.findById(id)
       .populate("resumeId", "originalName mimeType size")
-      .populate("templateId", "name subject body")
+      .populate("templateId", "name subject body resumeLink")
       .lean();
 
     if (!draft) {

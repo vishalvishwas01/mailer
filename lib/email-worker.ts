@@ -6,10 +6,6 @@ import EmailQueueItem from "@/models/EmailQueueItem";
 import EmailDraft from "@/models/EmailDraft";
 import EmailSend from "@/models/EmailSend";
 import Contact from "@/models/Contact";
-import CampaignDraft from "@/models/CampaignDraft";
-import Resume from "@/models/Resume";
-import EmailTemplate from "@/models/EmailTemplate";
-import { readResumeFile } from "@/lib/gridfs";
 import { createRawEmail } from "@/lib/mime-email";
 import { getAuthenticatedGmailClientForAccount } from "@/lib/gmail-client";
 import { checkMailerEligibility } from "@/lib/mailer-scheduler";
@@ -114,28 +110,6 @@ export async function runEmailWorker() {
       return { processed: true, queueItemId: item.id, status: "failed", reason: "Recipient contact or email address is missing." };
     }
 
-    const campaign = await CampaignDraft.findById(draft.campaignDraftId).lean();
-    const resume = campaign ? await Resume.findById(campaign.resumeId).lean() : null;
-    if (!resume) {
-      await finishQueueItem(item._id, "failed", "Campaign resume is missing; email was not sent.");
-      return { processed: true, queueItemId: item.id, status: "failed", reason: "Campaign resume is missing." };
-    }
-    const template = campaign ? await EmailTemplate.findById(campaign.templateId).lean() : null;
-    const templateAttachment = template?.attachment;
-    const templateAttachmentBuffer = templateAttachment ? await readResumeFile(templateAttachment.fileId) : null;
-
-    let resumeBuffer: Buffer;
-    try {
-      resumeBuffer = await readResumeFile(resume.fileId);
-      if (!resumeBuffer.length || resumeBuffer.length > 5 * 1024 * 1024) {
-        throw new Error("Resume attachment is empty or exceeds 5 MB.");
-      }
-    } catch (error) {
-      await finishQueueItem(item._id, "failed", "Could not read the campaign resume; email was not sent.");
-      console.error("Could not load campaign resume attachment:", error);
-      return { processed: true, queueItemId: item.id, status: "failed", reason: "Could not load campaign resume attachment." };
-    }
-
     const existingSend = await EmailSend.findOne({
       $or: [
         { emailDraftId: item.emailDraftId },
@@ -202,12 +176,6 @@ export async function runEmailWorker() {
           to: contact.email,
           subject: draft.subject,
           body: draft.body,
-          attachment: {
-            filename: resume.originalName,
-            mimeType: resume.mimeType,
-            content: resumeBuffer,
-          },
-          ...(templateAttachment && templateAttachmentBuffer ? { attachments: [{ filename: templateAttachment.originalName, mimeType: templateAttachment.mimeType, content: templateAttachmentBuffer }] } : {}),
         }) },
       });
 

@@ -8,12 +8,22 @@ const allowedPlaceholders = new Set([
   "website",
   "role",
   "sender_name",
+  "resume_link",
 ]);
 
 const templateFields = {
   name: z.string().trim().min(1).max(100),
   subject: z.string().trim().min(1).max(200),
   body: z.string().trim().min(1).max(20000),
+  resumeLink: z.string().trim().max(2048).refine((value) => {
+    if (!value) return true;
+    try {
+      const url = new URL(value);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Resume link must be a valid HTTP or HTTPS URL.").optional(),
 };
 
 const templateObjectSchema = z.object(templateFields).strict();
@@ -32,7 +42,7 @@ function validatePlaceholders(
       ctx.addIssue({
         code: "custom",
         path: ["body"],
-        message: `Unsupported placeholder: {{${placeholder}}}. Use name, email, company, website, role, or sender_name.`,
+        message: `Unsupported placeholder: {{${placeholder}}}. Use name, email, company, website, role, sender_name, or resume_link.`,
       });
     }
   }
