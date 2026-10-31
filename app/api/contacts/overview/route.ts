@@ -5,6 +5,8 @@ import Contact from "@/models/Contact";
 import EmailSend from "@/models/EmailSend";
 import EmailQueueItem from "@/models/EmailQueueItem";
 import EmailReply from "@/models/EmailReply";
+// Register the populated draft model in this serverless route bundle.
+import "@/models/EmailDraft";
 
 type ContactStatus = "reply_received" | "sent" | "failed" | "sending" | "queued" | "unknown" | "not_sent";
 
