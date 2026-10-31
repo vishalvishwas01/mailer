@@ -3,7 +3,7 @@ name: Mailer workers
 on:
   schedule:
     # GitHub Actions scheduled workflows use UTC and may start a little late.
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
