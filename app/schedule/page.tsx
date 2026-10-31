@@ -141,7 +141,7 @@ export default function SchedulePage() {
       </header>
 
       <div className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-        In production, use an external scheduler such as EasyCron to call the worker endpoints. Vercel Hobby does not support frequent Cron Jobs. Local development does not run the worker automatically. Any worker run can send a real email, so verify each recipient before proceeding.
+        In production, GitHub Actions calls the worker endpoints every 15 minutes because Vercel Hobby does not support frequent Cron Jobs. Local development does not run the worker automatically. Any worker run can send a real email, so verify each recipient before proceeding.
       </div>
 
       {process.env.NODE_ENV !== "production" && <section className="mt-5 rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">

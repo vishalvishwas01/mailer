@@ -29,12 +29,12 @@ Generate independent random secrets locally, for example with `node -e "console.
 
 ## Scheduled processing
 
-External scheduler jobs:
+GitHub Actions runs the scheduled worker workflow in `.github/workflows/mailer-workers.yml` every 15 minutes (UTC; GitHub may delay scheduled starts). It also supports manual runs from the Actions tab.
 
-- `/api/email-worker` every 5–15 minutes. Each run can process at most one queue item; the schedule window, interval, daily limit, approved-draft state, persistent reservation, and unique send records are checked before delivery.
+- `/api/email-worker` every 15 minutes. Each run can process at most one queue item; the schedule window, interval, daily limit, approved-draft state, persistent reservation, and unique send records are checked before delivery.
 - `/api/replies/poll` every 15 minutes. It checks recent Gmail threads for replies and stores discovered messages.
 
-The worker endpoints accept `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is configured in the deployment environment. Configure an external scheduler such as EasyCron to call `/api/email-worker` and `/api/replies/poll`; Vercel Hobby does not support the frequent schedules required by this app. The endpoints reject requests without the secret. Scheduled sending is disabled until you enable it in the schedule settings. Only queue drafts that have been reviewed and approved.
+Add GitHub repository Actions secrets named `APP_URL` (your deployed origin, such as `https://your-app.vercel.app`, without a trailing slash) and `CRON_SECRET` (same value as the Vercel environment variable). The workflow calls the worker endpoints with `Authorization: Bearer <CRON_SECRET>`. The endpoints reject requests without the secret. Scheduled sending is disabled until you enable it in the schedule settings. Only queue drafts that have been reviewed and approved.
 
 The scheduler uses the logical sending window as the daily limit period, including overnight windows that cross midnight. Gmail acceptance is recorded as `sent`; uncertain provider outcomes are recorded as `unknown` and are not automatically retried.
 

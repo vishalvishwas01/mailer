@@ -1,0 +1,36 @@
+name: Mailer workers
+
+on:
+  schedule:
+    # GitHub Actions scheduled workflows use UTC and may start a little late.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  email-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process one eligible queued email
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$APP_URL" || { echo "APP_URL repository secret is missing"; exit 1; }
+          test -n "$CRON_SECRET" || { echo "CRON_SECRET repository secret is missing"; exit 1; }
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/email-worker"
+
+  reply-poller:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll sent Gmail threads for replies
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$APP_URL" || { echo "APP_URL repository secret is missing"; exit 1; }
+          test -n "$CRON_SECRET" || { echo "CRON_SECRET repository secret is missing"; exit 1; }
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/replies/poll"
