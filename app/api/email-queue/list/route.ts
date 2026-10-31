@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import EmailQueueItem from "@/models/EmailQueueItem";
+import "@/models/Contact";
+import "@/models/CampaignDraft";
+import "@/models/GmailAccount";
+import "@/models/EmailDraft";
 
 const allowedStatuses = [
   "queued",

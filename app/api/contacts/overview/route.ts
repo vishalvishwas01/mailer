@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import Contact from "@/models/Contact";
 import EmailSend from "@/models/EmailSend";
 import EmailQueueItem from "@/models/EmailQueueItem";
 import EmailReply from "@/models/EmailReply";
-// Register the populated draft model in this serverless route bundle.
+import "@/models/CampaignDraft";
+import "@/models/GmailAccount";
 import "@/models/EmailDraft";
 
 type ContactStatus = "reply_received" | "sent" | "failed" | "sending" | "queued" | "unknown" | "not_sent";

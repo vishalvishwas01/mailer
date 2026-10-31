@@ -4,6 +4,8 @@ import { z } from "zod";
 
 import { connectDB } from "@/lib/mongodb";
 import EmailDraft from "@/models/EmailDraft";
+import "@/models/Contact";
+import "@/models/CampaignDraft";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import EmailReply from "@/models/EmailReply";
+import "@/models/Contact";
+import "@/models/EmailSend";
 
 export async function GET(request: NextRequest) {
   try {
