@@ -29,7 +29,7 @@ Generate independent random secrets locally, for example with `node -e "console.
 
 ## Scheduled processing
 
-GitHub Actions runs the email worker every 5 minutes from 18:00–20:55 UTC (11:30 PM–2:25 AM IST), and polls for replies hourly. GitHub may delay scheduled starts. The workflow also supports manual runs from the Actions tab.
+GitHub Actions runs the email worker every 5 minutes from 18:00–20:55 UTC (11:30 PM–2:25 AM IST), with no email-worker requests on Friday or Saturday in IST. A Thursday window therefore stops at midnight going into Friday. It polls for replies hourly. GitHub may delay scheduled starts. The workflow also supports manual runs from the Actions tab.
 
 - `/api/email-worker` every 5 minutes during the configured IST window. Each run can process at most one queue item; the schedule window, interval, daily limit, approved-draft state, persistent reservation, and unique send records are checked before delivery.
 - `/api/replies/poll` hourly. It checks recent Gmail threads for replies and stores discovered messages.
