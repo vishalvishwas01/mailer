@@ -1,37 +1,12 @@
-name: Mailer workers
+name: Mailer reply poller
 
 on:
   schedule:
-    # 11:30 PM–2:30 AM IST is 18:00–21:00 UTC; end is exclusive.
-    # Run only Sunday–Thursday UTC, skipping Friday- and Saturday-starting IST windows.
-    - cron: "*/5 18-20 * * 0-4"
-    # Reply checks are independent of the sending window; hourly keeps usage low.
     - cron: "0 * * * *"
   workflow_dispatch:
 
 jobs:
-  email-worker:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 18-20 * * 0-4'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Process one eligible queued email
-        env:
-          APP_URL: ${{ secrets.APP_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          test -n "$APP_URL" || { echo "APP_URL repository secret is missing"; exit 1; }
-          test -n "$CRON_SECRET" || { echo "CRON_SECRET repository secret is missing"; exit 1; }
-          IST_DAY=$(TZ=Asia/Kolkata date +%u)
-          if [ "$IST_DAY" = "5" ] || [ "$IST_DAY" = "6" ]; then
-            echo "Email sending is disabled on Friday and Saturday (IST)."
-            exit 0
-          fi
-          curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${APP_URL%/}/api/email-worker"
-
   reply-poller:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 * * * *'
     runs-on: ubuntu-latest
     steps:
       - name: Poll sent Gmail threads for replies
